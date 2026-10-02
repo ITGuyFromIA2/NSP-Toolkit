@@ -287,4 +287,37 @@ Describe 'Launcher' {
     }
 }
 
+Describe 'Sibling module loader' {
+    # Install-Module is always mocked here; NSP.NoSuchModule is never installed or checked out.
+    BeforeEach {
+        $script:SavedNoAutoInstall = $env:NSP_NO_AUTOINSTALL
+        Mock -ModuleName NSP.Toolkit Write-Host { }
+        Mock -ModuleName NSP.Toolkit Get-PackageProvider { [pscustomobject]@{ Name = 'NuGet'; Version = [version]'2.8.5.208' } }
+        Mock -ModuleName NSP.Toolkit Install-PackageProvider { }
+        Mock -ModuleName NSP.Toolkit Install-Module { }
+    }
+    AfterEach { $env:NSP_NO_AUTOINSTALL = $script:SavedNoAutoInstall }
+
+    It 'installs a missing sibling from the Gallery at the requested floor' {
+        $env:NSP_NO_AUTOINSTALL = $null
+        InModuleScope NSP.Toolkit { { Import-NSPToolkitModule -Name NSP.NoSuchModule -MinimumVersion 9.9.9 } | Should -Throw '*NSP.NoSuchModule 9.9.9 or later is required*' }
+        Should -Invoke -ModuleName NSP.Toolkit Install-Module -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'NSP.NoSuchModule' -and $MinimumVersion -eq [version]'9.9.9' -and $Repository -eq 'PSGallery' -and $Scope -in 'AllUsers', 'CurrentUser'
+        }
+        Should -Invoke -ModuleName NSP.Toolkit Install-PackageProvider -Times 0
+    }
+
+    It 'says why when the Gallery install fails' {
+        $env:NSP_NO_AUTOINSTALL = $null
+        Mock -ModuleName NSP.Toolkit Install-Module { throw 'Unable to resolve package source' }
+        InModuleScope NSP.Toolkit { { Import-NSPToolkitModule -Name NSP.NoSuchModule } | Should -Throw '*Installing it from the PowerShell Gallery failed: Unable to resolve package source*' }
+    }
+
+    It 'never installs with NSP_NO_AUTOINSTALL=1' {
+        $env:NSP_NO_AUTOINSTALL = '1'
+        InModuleScope NSP.Toolkit { { Import-NSPToolkitModule -Name NSP.NoSuchModule } | Should -Throw '*Install-Module NSP.NoSuchModule*' }
+        Should -Invoke -ModuleName NSP.Toolkit Install-Module -Times 0
+    }
+}
+
 }   # Describe NSP.Toolkit

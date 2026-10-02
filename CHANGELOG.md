@@ -6,3 +6,6 @@ All notable changes to NSP.Toolkit are documented here. Versions follow
 ## 0.1.0
 
 First release.
+
+The other NSP modules it needs are installed from the PowerShell Gallery the first time they're needed,
+so `Install-Module` of this one module is enough. Set `NSP_NO_AUTOINSTALL=1` to turn that off.
