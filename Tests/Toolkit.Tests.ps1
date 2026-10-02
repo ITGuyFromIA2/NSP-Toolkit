@@ -33,6 +33,7 @@ Describe 'Hand-off files' {
         $h.Payload.Name | Should -Be ("O'Brien " + [char]0x00EB)
         @($h.Payload.List).Count | Should -Be 1
         $h.Payload.List -is [array] | Should -BeTrue
+        (ConvertFrom-Json $h.PayloadJson).Name | Should -Be ("O'Brien " + [char]0x00EB)
     }
 
     It 'flags a payload edited after it was written' {

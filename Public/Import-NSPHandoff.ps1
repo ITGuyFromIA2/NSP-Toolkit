@@ -10,6 +10,10 @@ function Import-NSPHandoff {
           *_NPSResponse.json  NPS-Manager menu 7 (SchemaVersion 1)   -> Tool NPS
           ADInventory_*.json  AD-Manager menu 6 (SchemaVersion 1)    -> Tool AD
 
+        PayloadJson is the payload's exact text as written (the whole file for an old format), or
+        $null when it cannot be separated out - so a caller can pass the payload on byte for byte,
+        without a re-serialization changing dates or escaping between PowerShell editions.
+
         HashValid is $true/$false for a shared-header file whose payload hash could be checked, and
         $null when it could not (old formats, or a file re-saved by another tool). A mismatch is a
         warning, not an error - the caller decides. -Tool / -Kind make the read throw when the file
@@ -65,6 +69,7 @@ function Import-NSPHandoff {
                 Generated       = [string]$data.Generated
                 GeneratedBy     = [string]$data.GeneratedBy
                 Payload         = $data.Payload
+                PayloadJson     = $raw
                 Legacy          = $false
                 LegacyFormat    = $null
                 HashValid       = $hashValid
@@ -87,6 +92,7 @@ function Import-NSPHandoff {
                 Generated       = $legacy.Generated
                 GeneratedBy     = ''
                 Payload         = $data
+                PayloadJson     = $text
                 Legacy          = $true
                 LegacyFormat    = $legacy.LegacyFormat
                 HashValid       = $null
