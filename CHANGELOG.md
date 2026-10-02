@@ -3,6 +3,22 @@
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.1
+
+From the 2026-10-02 security review:
+
+- **Secrets fail closed.** Answers holding a tool's secret field (NPS `RADIUSSecret`) are saved only
+  while `%ProgramData%\NSP\Toolkit` is limited to Administrators and SYSTEM; an elevated session puts
+  the permissions back, otherwise the save fails and nothing is written. (`NSP_TOOLKIT_ROOT`
+  overrides are not checked.)
+- **Gallery installs are announced** - the module, minimum version and scope - before the sibling
+  loader installs anything, and the installed version after. The loader is now one canonical file
+  here; the tool modules carry generated copies (`tools\Sync-SharedLoader.ps1`) with a drift test.
+- `Import-NSPToolSeedAnswers` supports `-WhatIf`.
+- The launcher script no longer suggests piping a download into `Invoke-Expression`;
+  `Install-Module NSP.Toolkit; Start-NSPToolkit` is the documented start.
+- The loader dot-sources files in name order.
+
 ## 0.1.0
 
 First release.

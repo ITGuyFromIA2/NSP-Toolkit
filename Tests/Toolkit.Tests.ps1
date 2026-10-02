@@ -318,6 +318,76 @@ Describe 'Sibling module loader' {
         InModuleScope NSP.Toolkit { { Import-NSPToolkitModule -Name NSP.NoSuchModule } | Should -Throw '*Install-Module NSP.NoSuchModule*' }
         Should -Invoke -ModuleName NSP.Toolkit Install-Module -Times 0
     }
+
+    It 'says what it is installing, and at which scope, before installing' {
+        $env:NSP_NO_AUTOINSTALL = $null
+        InModuleScope NSP.Toolkit { { Import-NSPToolkitModule -Name NSP.NoSuchModule -MinimumVersion 1.2.3 } | Should -Throw }
+        Should -Invoke -ModuleName NSP.Toolkit Write-Host -ParameterFilter { "$Object" -match 'NSP\.NoSuchModule 1\.2\.3 or later is needed .* installing it from the PowerShell Gallery \(scope (AllUsers|CurrentUser)\)' }
+    }
+}
+
+Describe 'Secrets are only saved under a locked-down root' {
+    # Real ACLs on TestDrive folders this test owns; ProgramData is never touched.
+    BeforeAll {
+        function script:New-LockedFolder([string]$Path) {
+            New-Item -ItemType Directory -Path $Path -Force | Out-Null
+            $acl = New-Object Security.AccessControl.DirectorySecurity
+            $acl.SetAccessRuleProtection($true, $false)
+            $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+            foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
+                $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl', $inherit, 'None', 'Allow')))
+            }
+            Set-Acl -LiteralPath $Path -AclObject $acl
+        }
+        function script:Unlock-Folder([string]$Path) {
+            # Inheritance back on, so Pester can clear TestDrive without elevation (this test owns it).
+            $open = New-Object Security.AccessControl.DirectorySecurity
+            $open.SetAccessRuleProtection($false, $false)
+            $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
+            $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+            $open.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($me, 'FullControl', $inherit, 'None', 'Allow')))
+            # Access list only - Set-Acl would also try to write the audit list (SeSecurityPrivilege).
+            $dir = New-Object IO.DirectoryInfo($Path)
+            if ($PSVersionTable.PSEdition -eq 'Core') { [IO.FileSystemAclExtensions]::SetAccessControl($dir, $open) } else { $dir.SetAccessControl($open) }
+        }
+    }
+    It 'accepts an Administrators + SYSTEM only root, rejects an inherited one' {
+        $locked = Join-Path $TestDrive ('locked_' + [guid]::NewGuid().ToString('N')); New-LockedFolder $locked
+        $open = Join-Path $TestDrive ('open_' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $open | Out-Null
+        try {
+            InModuleScope NSP.Toolkit -Parameters @{ P = $locked } { param($P) Test-NSPToolkitRootAcl -Path $P } | Should -BeTrue
+        } finally { Unlock-Folder $locked }
+        InModuleScope NSP.Toolkit -Parameters @{ P = $open } { param($P) Test-NSPToolkitRootAcl -Path $P } | Should -BeFalse
+        InModuleScope NSP.Toolkit -Parameters @{ P = (Join-Path $TestDrive 'missing') } { param($P) Test-NSPToolkitRootAcl -Path $P } | Should -BeFalse
+    }
+    It 'fails closed on an open root when it cannot lock it down' {
+        $open = Join-Path $TestDrive ('open2_' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $open | Out-Null
+        Mock -ModuleName NSP.Toolkit Set-NSPToolkitRootAcl { }
+        InModuleScope NSP.Toolkit -Parameters @{ P = $open } {
+            param($P)
+            $root = $P
+            { Assert-NSPToolkitRootSecure -Root $root -Reason 'NPS answers holding RADIUSSecret' } | Should -Throw '*Not saving NPS answers holding RADIUSSecret*not limited to Administrators and SYSTEM*'
+        }
+    }
+    It 'Save-NSPToolAnswers refuses NPS answers with a RADIUS secret when the root is not locked down' {
+        $saved = $env:NSP_TOOLKIT_ROOT
+        try {
+            $env:NSP_TOOLKIT_ROOT = $null
+            $answers = Join-Path $TestDrive ('ans_' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $answers | Out-Null
+            Mock -ModuleName NSP.Toolkit Get-NSPToolWorkPath { $answers }
+            Mock -ModuleName NSP.Toolkit Assert-NSPToolkitRootSecure { throw 'Not saving: root open' }
+            { Save-NSPToolAnswers -Tool NPS -Answers @{ CompanyName = 'Contoso'; RADIUSSecret = 'not-a-real-secret' } } | Should -Throw '*root open*'
+            Test-Path -LiteralPath (Join-Path $answers 'Answers.json') | Should -BeFalse
+            Save-NSPToolAnswers -Tool NPS -Answers @{ CompanyName = 'Contoso'; RADIUSSecret = '' }
+            Test-Path -LiteralPath (Join-Path $answers 'Answers.json') | Should -BeTrue
+            Should -Invoke -ModuleName NSP.Toolkit Assert-NSPToolkitRootSecure -Times 1 -Exactly
+        } finally { $env:NSP_TOOLKIT_ROOT = $saved }
+    }
+    It 'Import-NSPToolSeedAnswers -WhatIf merges but writes nothing' {
+        Import-NSPToolSeedAnswers -Tool AD -SeedAnswersJson '{"CompanyName":"Contoso"}' -NonInteractive -WhatIf | Out-Null
+        Get-NSPToolAnswers -Tool AD | Should -BeNullOrEmpty
+    }
 }
 
 }   # Describe NSP.Toolkit

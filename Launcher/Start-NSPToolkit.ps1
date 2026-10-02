@@ -4,12 +4,15 @@
     the PowerShell Gallery if needed, then opens the NSP Toolkit menu.
 
 .DESCRIPTION
-    Meant to be hosted somewhere a tech can reach and run as:
+    On a server with PowerShellGet the simplest start needs no script at all:
 
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <url>/Start-NSPToolkit.ps1 | iex"
+        Install-Module NSP.Toolkit -Scope AllUsers; Start-NSPToolkit
 
-    or saved and right-clicked > Run with PowerShell. Needs HTTPS access to
-    www.powershellgallery.com. Not part of the NSP.Toolkit package itself.
+    This file is for a server that can't do that from a prompt (no NuGet provider yet, TLS 1.2
+    not enabled). Download it over HTTPS, check it (and its signature, when signed) and run the
+    saved copy - right-click > Run with PowerShell. Do not pipe a downloaded copy straight into
+    Invoke-Expression. Needs HTTPS access to www.powershellgallery.com. Not part of the
+    NSP.Toolkit package itself.
 #>
 $ErrorActionPreference = 'Stop'
 try {

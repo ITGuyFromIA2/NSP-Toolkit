@@ -13,8 +13,19 @@ Start-NSPToolkit -Tool NPS                             # straight into one
 
 `Start-NSPToolkit` relaunches elevated, marks the tools that apply to this machine (NPS on an NPS
 server, PKI on a CA, ...), and installs a tool's module from the Gallery the first time it is
-picked. `Launcher\Start-NSPToolkit.ps1` is a one-file bootstrap you can host and run with
-`irm <url> | iex` on a server that has nothing installed yet.
+picked (it says what it is installing, from where and at which scope, before it does;
+`NSP_NO_AUTOINSTALL=1` turns that off). `Launcher\Start-NSPToolkit.ps1` is a one-file bootstrap for a
+server that can't run `Install-Module` yet (no NuGet provider, no TLS 1.2): download it over HTTPS,
+check it, and run the saved copy - don't pipe it into `Invoke-Expression`.
+
+## Client data and secrets
+
+Each tool keeps its answers and hand-back files under `%ProgramData%\NSP\Toolkit\<Tool>`. The root is
+limited to Administrators and SYSTEM when it is created. Answers holding a secret (NPS
+`RADIUSSecret`) are only saved while that is still true: an elevated session puts the permissions
+back, otherwise the save fails. A tool may give the desktop user read access to its `Responses\`
+folder when it opens it in Explorer. `Clear-NSPToolClientData` blanks the secret fields when a server
+is done with. `NSP_TOOLKIT_ROOT` (tests, portable use) is not checked - protect that folder yourself.
 
 ## What's in it
 

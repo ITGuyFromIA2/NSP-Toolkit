@@ -21,7 +21,7 @@ function Import-NSPToolSeedAnswers {
     .EXAMPLE
         $script:Answers = Import-NSPToolSeedAnswers -Tool AD -SeedAnswersJson $SeedAnswersJson
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9]+$')][string]$Tool,
         [AllowEmptyString()][string]$SeedAnswersJson,
@@ -42,6 +42,7 @@ function Import-NSPToolSeedAnswers {
     if ($null -eq $seed) { return $live }
 
     $merge = Merge-NSPHandoffAnswers -Live $live -Incoming $seed -NonInteractive:$NonInteractive
+    if (-not $PSCmdlet.ShouldProcess("$Tool answers", 'Save the merged answers')) { return $merge.Answers }
     Save-NSPToolAnswers -Tool $Tool -Answers $merge.Answers
     if ($null -eq $live) {
         Write-Host "Saved the $($merge.Added) answer field(s) this launcher carried." -ForegroundColor Green
