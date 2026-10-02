@@ -1,0 +1,32 @@
+{
+    "Schema":  4,
+    "GeneratedUtc":  "2026-01-15T16:00:00Z",
+    "CAManagerVersion":  "1.1.0",
+    "Company":  "Example Co",
+    "IssuingModel":  "EnterpriseRoot",
+    "CACommonName":  "Example-Issuing-CA",
+    "CAConfigString":  "EXAMPLE-CA.example.test\\Example-Issuing-CA",
+    "CASanitizedName":  "Example-Issuing-CA",
+    "CACertNameOnGate":  "CA_Example-Issuing-CA",
+    "CACertPem":  "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----",
+    "CACertChain":  [
+
+                    ],
+    "FortiGateCertName":  "ExampleCo_FortiGate",
+    "FortiGatePeerName":  "P_ExampleCo",
+    "FortiGatePfxFile":  "ExampleCo_FortiGate.pfx",
+    "FortiGatePfxPassword":  "not-a-real-password",
+    "FortiGatePfxBase64":  "",
+    "FortiGateCertPem":  "",
+    "FortiGateCertThumbprint":  "0000000000000000000000000000000000000000",
+    "PeerSubjectFilter":  "OU=VPN",
+    "PeerPlan":  [
+
+                 ],
+    "AppProxyCrlUrl":  "",
+    "AppProxyOcspUrl":  "",
+    "AutoEnrollGpo":  "",
+    "TemplatesPublished":  [
+
+                           ]
+}

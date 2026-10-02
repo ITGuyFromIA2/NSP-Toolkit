@@ -1,0 +1,31 @@
+{
+    "SchemaVersion":  1,
+    "Tool":  "NPS-Manager",
+    "ToolVersion":  "1.1.0",
+    "Generated":  "2026-01-15T10:00:00",
+    "Company":  "Example Co",
+    "ComputerName":  "EXAMPLE-NPS",
+    "Domain":  "example.test",
+    "Nps":  {
+                "RoleInstalled":  true,
+                "ExtensionInstalled":  false,
+                "ExtensionVersion":  "",
+                "NumberMatchingOverride":  "",
+                "NetworkPolicyCount":  2,
+                "ConnectionRequestPolicyCount":  1
+            },
+    "RadiusClients":  [
+                          {
+                              "Name":  "EXAMPLE-FGT",
+                              "Address":  "192.0.2.1",
+                              "Enabled":  true
+                          }
+                      ],
+    "IasXml":  {
+                   "FileName":  "ias.xml",
+                   "LastWriteTime":  "2026-01-15T09:59:00",
+                   "SecretsRemoved":  1,
+                   "Sha256":  "0000000000000000000000000000000000000000000000000000000000000000",
+                   "ContentBase64":  "PD94bWwgdmVyc2lvbj0iMS4wIj8+PFJvb3QvPg=="
+               }
+}

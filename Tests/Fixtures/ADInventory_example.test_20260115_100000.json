@@ -1,0 +1,89 @@
+{
+  "SchemaVersion": 1,
+  "Generated": "2026-01-15T10:00:00.0000000-06:00",
+  "Domain": "example.test",
+  "ComputerName": "EXAMPLE-CA",
+  "Tool": "AD-Manager 1.1.0",
+  "Groups": [
+    {
+      "Name": "VPN_Staff_AD",
+      "Sid": "S-1-5-21-1-2-3-3001",
+      "DistinguishedName": "CN=VPN_Staff_AD,OU=VPN,DC=example,DC=test",
+      "Description": "",
+      "MemberOf": [ { "Name": "VPNFW_Example", "Sid": "S-1-5-21-1-2-3-3100", "DistinguishedName": "CN=VPNFW_Example,OU=VPN,DC=example,DC=test" } ],
+      "Members": [
+        { "Name": "alice", "Class": "user", "Sid": "S-1-5-21-1-2-3-5001", "DistinguishedName": "CN=Alice,DC=example,DC=test", "Enabled": true },
+        { "Name": "bob", "Class": "user", "Sid": "S-1-5-21-1-2-3-5002", "DistinguishedName": "CN=Bob,DC=example,DC=test", "Enabled": false },
+        { "Name": "Contractors_AD", "Class": "group", "Sid": "S-1-5-21-1-2-3-3003", "DistinguishedName": "CN=Contractors_AD,OU=VPN,DC=example,DC=test", "Enabled": null }
+      ],
+      "RecursiveUsers": [
+        { "Name": "alice", "DistinguishedName": "CN=Alice,DC=example,DC=test", "Enabled": true },
+        { "Name": "bob", "DistinguishedName": "CN=Bob,DC=example,DC=test", "Enabled": false },
+        { "Name": "carol", "DistinguishedName": "CN=Carol,DC=example,DC=test", "Enabled": true }
+      ],
+      "RecursiveUserCount": 3
+    },
+    {
+      "Name": "Contractors_AD",
+      "Sid": "S-1-5-21-1-2-3-3003",
+      "DistinguishedName": "CN=Contractors_AD,OU=VPN,DC=example,DC=test",
+      "Description": "",
+      "MemberOf": [ { "Name": "VPN_Staff_AD", "Sid": "S-1-5-21-1-2-3-3001", "DistinguishedName": "CN=VPN_Staff_AD,OU=VPN,DC=example,DC=test" } ],
+      "Members": [
+        { "Name": "alice", "Class": "user", "Sid": "S-1-5-21-1-2-3-5001", "DistinguishedName": "CN=Alice,DC=example,DC=test", "Enabled": true },
+        { "Name": "carol", "Class": "user", "Sid": "S-1-5-21-1-2-3-5003", "DistinguishedName": "CN=Carol,DC=example,DC=test", "Enabled": true }
+      ],
+      "RecursiveUsers": [
+        { "Name": "alice", "DistinguishedName": "CN=Alice,DC=example,DC=test", "Enabled": true },
+        { "Name": "carol", "DistinguishedName": "CN=Carol,DC=example,DC=test", "Enabled": true }
+      ],
+      "RecursiveUserCount": 2
+    },
+    {
+      "Name": "VPNFW_Example",
+      "Sid": "S-1-5-21-1-2-3-3100",
+      "DistinguishedName": "CN=VPNFW_Example,OU=VPN,DC=example,DC=test",
+      "Description": "Purpose group",
+      "MemberOf": [],
+      "Members": [ { "Name": "VPN_Staff_AD", "Class": "group", "Sid": "S-1-5-21-1-2-3-3001", "DistinguishedName": "CN=VPN_Staff_AD,OU=VPN,DC=example,DC=test", "Enabled": null } ],
+      "RecursiveUsers": [],
+      "RecursiveUserCount": 0
+    }
+  ],
+  "Templates": [
+    {
+      "Name": "NSPIKEv2Staff",
+      "DisplayName": "NSP-IKEv2-Staff",
+      "Oid": "1.3.6.1.4.1.311.21.8.1.2.3",
+      "SchemaVersion": 2,
+      "ValidityDays": 365,
+      "RenewalDays": 42,
+      "NameFlags": "0x82000000",
+      "EnrolleeSuppliesSubject": false,
+      "Enroll": [ { "Name": "EX\\VPN_Staff_AD", "Sid": "S-1-5-21-1-2-3-3001" }, { "Name": "EX\\Domain Admins", "Sid": "S-1-5-21-1-2-3-512" } ],
+      "AutoEnroll": [ { "Name": "EX\\VPN_Staff_AD", "Sid": "S-1-5-21-1-2-3-3001" }, { "Name": "EX\\Domain Admins", "Sid": "S-1-5-21-1-2-3-512" } ],
+      "PublishedOn": [ "Example-CA" ],
+      "OuStamp": "vpn-staff"
+    },
+    {
+      "Name": "NSPIKEv2Contractors",
+      "DisplayName": "NSP-IKEv2-Contractors",
+      "Oid": "1.3.6.1.4.1.311.21.8.1.2.4",
+      "SchemaVersion": 2,
+      "ValidityDays": 365,
+      "RenewalDays": 42,
+      "NameFlags": "0x00000001",
+      "EnrolleeSuppliesSubject": true,
+      "Enroll": [ { "Name": "EX\\Contractors_AD", "Sid": "S-1-5-21-1-2-3-3003" } ],
+      "AutoEnroll": [ { "Name": "EX\\Contractors_AD", "Sid": "S-1-5-21-1-2-3-3003" } ],
+      "PublishedOn": [ "Example-CA" ],
+      "OuStamp": null
+    }
+  ],
+  "TameMyCerts": {
+    "PolicyDirectory": "C:/PolicyFiles",
+    "Source": "CA registry",
+    "Policies": [ { "Template": "NSPIKEv2Staff", "OuValue": "vpn-staff", "File": "NSPIKEv2Staff.xml" }, { "Template": "NSPIKEv2Retired", "OuValue": "vpn-retired", "File": "NSPIKEv2Retired.xml" } ]
+  },
+  "Sources": { "NpsConfigPath": "C:/Windows/System32/ias/ias.xml", "GroupPattern": [ "VPN*" ], "TemplatePattern": null }
+}
