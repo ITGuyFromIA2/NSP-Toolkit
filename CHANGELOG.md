@@ -3,6 +3,10 @@
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.2
+
+- Release routine: `tools\Publish-ToGallery.ps1` now runs `Publish-NSPModule` from NSP.RepoTools, the checks every NSP module shares (including a client-reference sweep of the Git history). No change to the module itself.
+
 ## 0.1.1
 
 From the 2026-10-02 security review:
