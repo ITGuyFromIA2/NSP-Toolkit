@@ -2,7 +2,7 @@
 .SYNOPSIS
     Copies the canonical Private\Import-NSPToolkitModule.ps1 into the sibling tool-module checkouts.
 .DESCRIPTION
-    NSP.ActiveDirectory, NSP.NPS, NSP.PKI, NSP.FortiClient and NSP.FileTransfer each ship a private copy of this
+    NSP.ActiveDirectory, NSP.NPS, NSP.PKI, NSP.FortiClient, NSP.FileTransfer and NSP.M365.ConditionalAccess each ship a private copy of this
     module's sibling loader (they can't depend on NSP.Toolkit to load NSP.Toolkit). This file is the
     one to edit; run this script afterwards, then each repo's tests (Tests\SharedLoader.Tests.ps1)
     confirm its copy matches. Checkouts that aren't present are reported and skipped.
@@ -16,7 +16,7 @@ param([string]$ToolkitsRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptR
 
 $source = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private\Import-NSPToolkitModule.ps1'
 $text = [IO.File]::ReadAllText($source) -replace "`r?`n", "`r`n"
-foreach ($repo in 'NSP-ActiveDirectory', 'NSP-NPS', 'NSP-PKI', 'NSP-FortiClient', 'NSP-FileTransfer') {
+foreach ($repo in 'NSP-ActiveDirectory', 'NSP-NPS', 'NSP-PKI', 'NSP-FortiClient', 'NSP-FileTransfer', 'NSP-M365-ConditionalAccess') {
     $target = Join-Path $ToolkitsRoot "$repo\Private\Import-NSPToolkitModule.ps1"
     if (-not (Test-Path -LiteralPath (Split-Path -Parent $target))) { Write-Warning "$repo not found under $ToolkitsRoot - skipped."; continue }
     if ((Test-Path -LiteralPath $target) -and ([IO.File]::ReadAllText($target) -replace "`r?`n", "`r`n") -ceq $text) { Write-Host "$repo already current." -ForegroundColor DarkGray; continue }
