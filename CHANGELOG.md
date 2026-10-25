@@ -3,6 +3,11 @@
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.3 (unreleased)
+
+- New tool `MDE`: NSP.Win.MDE's `Start-NSPMDETroubleshooter` (Defender for Endpoint EDR sharing-violation evidence), shown as applying where the Sense service is installed. `tools\Sync-SharedLoader.ps1` also writes NSP-Win-MDE's loader copy.
+- `tools\Sync-SharedLoader.ps1` also writes NSP-SSLCertificates' loader copy (no change to the module).
+
 ## 0.1.2
 
 - Release routine: `tools\Publish-ToGallery.ps1` now runs `Publish-NSPModule` from NSP.RepoTools, the checks every NSP module shares (including a client-reference sweep of the Git history). No change to the module itself.

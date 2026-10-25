@@ -1,7 +1,7 @@
 # NSP.Toolkit
 
 Shared plumbing, and the single entry point, for NSP operator tools (NSP.ActiveDirectory, NSP.NPS,
-NSP.PKI, NSP.FortiClient). Windows PowerShell **5.1** compatible (and 7+); imports on a bare host.
+NSP.PKI, NSP.FortiClient, NSP.Win.MDE). Windows PowerShell **5.1** compatible (and 7+); imports on a bare host.
 NSP.Bootstrap and NSP.Console are loaded on first use, never declared as required modules.
 
 ## One entry point

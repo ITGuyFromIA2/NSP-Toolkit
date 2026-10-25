@@ -2,7 +2,7 @@
 # where its module lives, how to start it, which answer fields are secrets, and where the old
 # zip-era installs left their files (for Move-NSPToolLegacyData).
 #
-# Name is the short key used everywhere else (work folder, hand-off files): AD, NPS, PKI, FortiClient.
+# Name is the short key used everywhere else (work folder, hand-off files): AD, NPS, PKI, FortiClient, MDE.
 
 $script:NSPToolDefinitions = @(
     [pscustomobject]@{
@@ -90,6 +90,27 @@ $script:NSPToolDefinitions = @(
             ShimNames       = @()
             ShimAnswersVar  = $null
             FixedPaths      = @('C:\Admin\FCTToolkit\Staging')
+        }
+    }
+    [pscustomobject]@{
+        Name             = 'MDE'
+        DisplayName      = 'MDE Troubleshooter'
+        Description      = 'Defender for Endpoint: prove an MsSense (EDR) sharing-violation collision with an app, for an EDR exclusion request.'
+        ModuleName       = 'NSP.Win.MDE'
+        MinimumVersion   = '0.1.0'
+        EntryFunction    = 'Start-NSPMDETroubleshooter'
+        ShimFunction     = $null
+        RequiresAdmin    = $true
+        Detect           = { [bool](Get-Service -Name Sense -ErrorAction SilentlyContinue) }
+        DetectHint       = 'Defender for Endpoint sensor (Sense) installed'
+        SecretFields     = @()
+        Legacy           = [pscustomobject]@{
+            StagingFolder   = $null
+            ExtractFolder   = $null
+            AnswersFile     = $null
+            ShimNames       = @()
+            ShimAnswersVar  = $null
+            FixedPaths      = @()
         }
     }
 )

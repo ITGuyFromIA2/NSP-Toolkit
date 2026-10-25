@@ -268,9 +268,9 @@ Describe 'Clear-NSPToolClientData' {
 }
 
 Describe 'Launcher' {
-    It 'lists the four tools' {
+    It 'lists the five tools' {
         $t = @(Get-NSPToolkitTool)
-        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient'
+        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient,MDE'
         ($t | Where-Object Name -eq NPS).SecretFields | Should -Contain 'RADIUSSecret'
     }
 
