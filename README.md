@@ -73,6 +73,23 @@ The selected run account still needs the supported Graph/SDK dependencies and ce
 source, spool, archive and configuration access. A plan or registration is not a successful
 task-account authentication test. Existing held jobs must not be requeued to validate setup.
 
+**Install PowerShell 7 and ScanBridge modules for all users** provisions what the task account
+loads. The task runs under PowerShell 7, so this step makes sure that:
+
+- PowerShell 7 is installed. When it is missing, setup downloads the latest stable MSI from the
+  PowerShell GitHub releases, installs it only when its signature is valid and Microsoft
+  Corporation's, and enables Microsoft Update for it.
+- NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and Microsoft.Graph.Authentication are in **both**
+  all-users folders (`C:\Program Files\WindowsPowerShell\Modules` and
+  `C:\Program Files\PowerShell\Modules`), from the PowerShell Gallery.
+- Older all-users NSP.M365.Graph copies are removed. An older copy earlier on the module path
+  would otherwise be the one loaded.
+
+Afterwards it reports, per module, what a PowerShell 7 process without user-profile folders would
+load. That is close to what a service account sees, but the task account's first run is the
+real proof. The task plan then runs the all-users `NSP.ScanBridge\<version>\scripts\Run-ScanBridge.ps1`,
+and registration refuses until that exists.
+
 **Configure dispatch alerting** fills the settings file's `Alerts` block without hand-typed
 client values:
 

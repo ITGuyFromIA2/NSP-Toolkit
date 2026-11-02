@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5 (unreleased)
+
+- ScanBridge setup: **Install PowerShell 7 and ScanBridge modules for all users**. It installs
+  PowerShell 7 when missing (the latest stable MSI from the PowerShell GitHub releases, kept only
+  when Microsoft-signed). It installs NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and
+  Microsoft.Graph.Authentication from the Gallery into both all-users module folders, and removes
+  older all-users NSP.M365.Graph copies. It then reports what PowerShell 7 would load without
+  user-profile folders. Plans first; DRY RUN changes nothing.
+- Task plan and registration use the all-users NSP.ScanBridge runner. Registration refuses while
+  ScanBridge is not installed for all users, because the task account could not load it.
+
 ## 0.1.4 (2026-11-02)
 
 - Add LocalAccounts and ScanBridge setup/diagnostic launcher entries, with plan-first task setup.

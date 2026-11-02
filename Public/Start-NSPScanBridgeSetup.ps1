@@ -15,6 +15,7 @@ function Start-NSPScanBridgeSetup {
         Write-NSPConsoleHeader -Title 'ScanBridge setup and diagnostics' -Subtitle ([Environment]::MachineName)
         $choices=@(
             [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies'}
+            [pscustomobject]@{Label='Install PowerShell 7 and ScanBridge modules for all users';Value='Install';Help='What the task account needs: PowerShell 7, NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and the Graph SDK in both all-users module folders. Older Graph copies are replaced. Plans first.'}
             [pscustomobject]@{Label='Prepare a local service account';Value='Account'}
             [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health'}
             [pscustomobject]@{Label='Configure dispatch alerting';Value='Alerts';Help='Pick the sender mailbox in the client tenant, create a scoped alert app and write the Alerts settings. Plans first.'}
@@ -34,6 +35,7 @@ function Start-NSPScanBridgeSetup {
                 Write-NSPConsoleLine 'Installed availability does not prove task-account discovery, supported ContextScope or certificate access.' -Role Warning
                 continue
             }
+            if($choice -eq 'Install') { Invoke-NSPScanBridgeModuleInstall | Format-Table -AutoSize; continue }
             if($choice -eq 'Account') {
                 Import-NSPToolkitModule -Name NSP.Win.LocalAccount -MinimumVersion 0.1.0
                 Start-NSPLocalAccountManager
@@ -55,8 +57,14 @@ function Start-NSPScanBridgeSetup {
             }
             if($choice -in @('TaskPlan','TaskApply')) {
                 Import-NSPToolkitModule -Name NSP.Win.ScheduledTask -MinimumVersion 0.1.0
-                $scanModule=Get-Module NSP.ScanBridge | Sort-Object Version -Descending | Select-Object -First 1
-                $runner=Join-Path $scanModule.ModuleBase 'scripts/Run-ScanBridge.ps1'
+                $installed=Resolve-NSPScanBridgeInstalledRunner
+                if($installed) { $runner=$installed.Runner; Write-NSPConsoleLine ("Task runs the all-users NSP.ScanBridge {0}: {1}" -f $installed.Version,$runner) -Role Muted }
+                elseif($choice -eq 'TaskApply' -and -not (Get-NSPDryRun)) { throw 'NSP.ScanBridge is not installed for all users, so the task account could not load it. Run ''Install PowerShell 7 and ScanBridge modules for all users'' first.' }
+                else {
+                    $scanModule=Get-Module NSP.ScanBridge | Sort-Object Version -Descending | Select-Object -First 1
+                    $runner=Join-Path $scanModule.ModuleBase 'scripts/Run-ScanBridge.ps1'
+                    Write-NSPConsoleLine 'NSP.ScanBridge is not installed for all users; this plan uses the loaded copy, which the task account cannot load. Install it before registering.' -Role Warning
+                }
                 $scheduling=Get-Module NSP.Win.ScheduledTask | Sort-Object Version -Descending | Select-Object -First 1
                 $hostPath=Read-NSPScanBridgeTaskHost
                 if($null -eq $hostPath) { continue }
