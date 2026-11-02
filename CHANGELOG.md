@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4 (2026-11-02)
 
 - Add LocalAccounts and ScanBridge setup/diagnostic launcher entries, with plan-first task setup.
 - ScanBridge setup: **Configure dispatch alerting**. The recipient is a saved answer, the sender is
