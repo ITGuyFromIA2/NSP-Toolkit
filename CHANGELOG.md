@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.5 (unreleased)
+## 0.1.5 (2026-11-02)
 
 - ScanBridge setup: **Install PowerShell 7 and ScanBridge modules for all users**. It installs
   PowerShell 7 when missing (the latest stable MSI from the PowerShell GitHub releases, kept only
