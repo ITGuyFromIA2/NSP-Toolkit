@@ -90,6 +90,15 @@ load. That is close to what a service account sees, but the task account's first
 real proof. The task plan then runs the all-users `NSP.ScanBridge\<version>\scripts\Run-ScanBridge.ps1`,
 and registration refuses until that exists.
 
+**Manage routes** lists the routes and adds, renames, re-times or removes one. A new route needs
+only a short generic name (it appears in dispatch tickets) and its Source folder. Spool and
+Archive are proposed as `<drive>\ScanBridge\<name>\Spool` and `\Archive` on the Source drive, and
+the worker's folder rules are checked across all routes before saving. Setup then offers each
+step below for the new route, plus the Sysmon update. Rename and remove are refused while the
+route has files in Spool or PDFs in Source, because receipts are bound to the route name. A route
+on another site only needs **Grant the ingestion app access to route sites**, which uses the app
+already in `Auth`.
+
 Three route steps fill in what the worker needs, in this order:
 
 1. **Create route folders and grant the task account access**. Source, Spool and Archive for

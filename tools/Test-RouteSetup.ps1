@@ -176,5 +176,70 @@ try {
     Invoke-NSPScanBridgeFolderSetup -ConfigurationPath (New-Settings)
     Check ($state.Errors.Count -eq 1 -and $state.PathGrants.Count -eq 0) 'A missing task account was not refused.'
 
+    # Site access for routes added later: needs a configured app; grants each route's site.
+    Reset-Flow
+    Invoke-NSPScanBridgeSiteGrantSetup -ConfigurationPath (New-Settings -Dest "DriveId='drive-1'; FolderItemId='f1'")
+    Check ($state.Errors.Count -eq 1 -and $state.SiteGrants.Count -eq 0) 'Site grants ran without an ingestion app in Auth.'
+    Reset-Flow; $state.Menu=@('Broker')
+    $settings=New-Settings -Dest "DriveId='drive-1'; FolderItemId='f1'"
+    [IO.File]::WriteAllText($settings,[IO.File]::ReadAllText($settings).Replace("ClientId = '<app-guid>'","ClientId = 'bbbbbbbb-0000-0000-0000-000000000002'"))
+    Invoke-NSPScanBridgeSiteGrantSetup -ConfigurationPath $settings
+    Check ($state.Errors.Count -eq 0 -and ($state.SiteGrants -join ';') -eq 'host,sc1,web1|False;host,sc1,web1|True' -and 'Sites.FullControl.All' -in $state.Scopes) "Site grant step did not plan then grant the route site once: $($state.SiteGrants -join ';')"
+
+    # Route manager. The chained steps are shadowed here so each can be checked as offered and run.
+    function Invoke-NSPScanBridgeFolderSetup { param($ConfigurationPath) $state.Chain+=,'Folders' }
+    function Invoke-NSPScanBridgeDestinationSetup { param($ConfigurationPath,$RouteName) $state.Chain+=,"Destination:$RouteName" }
+    function Invoke-NSPScanBridgeSiteGrantSetup { param($ConfigurationPath) $state.Chain+=,'SiteGrant' }
+    function Invoke-NSPScanBridgeSysmonSetup { param($ConfigurationPath) $state.Chain+=,'Sysmon' }
+    function Read-NSPFolderPath { param($Prompt,[switch]$Create) $state.FolderCreate=[bool]$Create; $state.FolderPick }
+    function Reset-Manager { param([switch]$DryRun) Reset-Flow -DryRun:$DryRun; $state.Chain=@(); $state.FolderPick="$root\frontdesk"; $state.FolderCreate=$null }
+
+    Reset-Manager; $state.Menu=@('Add'); $state.Typed=@('System','Route A','RouteA','FrontDesk')
+    $settings=New-Settings
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    $after=Import-PowerShellDataFile -LiteralPath $settings
+    $drive=[IO.Path]::GetPathRoot($root)
+    $added=@($after.Routes | Where-Object Name -eq 'FrontDesk')[0]
+    Check (@($after.Routes).Count -eq 3 -and $added.Source -eq "$root\frontdesk" -and $added.Spool -eq (Join-Path $drive 'ScanBridge\FrontDesk\Spool') -and $added.Archive -eq (Join-Path $drive 'ScanBridge\FrontDesk\Archive') -and $added.MinimumAgeSeconds -eq 20) 'Added route did not get derived Spool/Archive on the Source drive.'
+    Check ($added.DriveId -eq '<drive-id>' -and $after.Routes[1].Custom -eq 'kept' -and $state.FolderCreate) 'Existing routes changed, or the Source prompt could not create the folder.'
+    Check (($state.Chain -join ',') -eq 'Folders,Destination:FrontDesk,SiteGrant,Sysmon') "Dependent steps were not offered in order: $($state.Chain -join ',')"
+    Check (@($state.Confirms | Where-Object { $_ -like 'Next:*' }).Count -eq 4) 'Each next step was not offered separately.'
+
+    Reset-Manager; $state.Menu=@('Add'); $state.Typed=@('Dup'); $state.FolderPick="$root\scanA\inner"
+    $settings=New-Settings; $before=[IO.File]::ReadAllText($settings)
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    Check ($state.Errors.Count -eq 1 -and [IO.File]::ReadAllText($settings) -eq $before -and $state.Chain.Count -eq 0) 'A route overlapping another route was saved.'
+    Reset-Manager -DryRun; $state.Menu=@('Add'); $state.Typed=@('Lobby')
+    $settings=New-Settings; $before=[IO.File]::ReadAllText($settings)
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    Check ([IO.File]::ReadAllText($settings) -eq $before -and -not $state.FolderCreate -and $state.Chain.Count -eq 0) 'DRY RUN wrote a route, offered to create its Source, or ran next steps.'
+
+    Reset-Manager; $state.Menu=@(0,'Rename'); $state.Typed=@('RouteB','Reception')
+    $settings=New-Settings
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    $after=Import-PowerShellDataFile -LiteralPath $settings
+    Check ($after.Routes[0].Name -eq 'Reception' -and $after.Routes[1].Name -eq 'RouteB') 'Rename did not refuse a duplicate and then rename only that route.'
+    New-Item -ItemType Directory -Path "$root\spoolA" -Force | Out-Null; [IO.File]::WriteAllText("$root\spoolA\job.json",'{}')
+    Reset-Manager; $state.Menu=@(0,'Remove')
+    $settings=New-Settings; $before=[IO.File]::ReadAllText($settings)
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    Check ($state.Errors.Count -eq 1 -and $state.Errors[0] -match '1 file\(s\) in Spool' -and [IO.File]::ReadAllText($settings) -eq $before) 'Removing a route with jobs was not refused.'
+    Remove-Item -LiteralPath "$root\spoolA\job.json"
+    Reset-Manager; $state.Menu=@(1,'Remove')
+    $settings=New-Settings
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    $after=Import-PowerShellDataFile -LiteralPath $settings
+    Check (@($after.Routes).Count -eq 1 -and $after.Routes[0].Name -eq 'RouteA' -and ($state.Chain -join ',') -eq 'Sysmon') 'Remove did not drop only that route and offer the Sysmon update.'
+    Reset-Manager; $state.Menu=@(0,'Age'); $state.Typed=@('0','45')
+    $settings=New-Settings
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
+    Check ((Import-PowerShellDataFile -LiteralPath $settings).Routes[0].MinimumAgeSeconds -eq 45) 'Age change did not reject 0 and save 45.'
+    $single=New-Settings
+    $text=[IO.File]::ReadAllText($single); $text=$text.Substring(0,$text.IndexOf("    @{ Name = 'RouteB'")) + "  )`r`n}`r`n"
+    [IO.File]::WriteAllText($single,$text)
+    Reset-Manager; $state.Menu=@(0,'Remove')
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $single
+    Check ($state.Errors.Count -eq 1 -and @((Import-PowerShellDataFile -LiteralPath $single).Routes).Count -eq 1) 'The last route was removed.'
+
     Microsoft.PowerShell.Utility\Write-Host ('Passed: {0} route setup checks in {1}; Graph, accounts and console mocked.' -f $state.Checks,$PSVersionTable.PSVersion)
 } finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }

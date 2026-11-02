@@ -11,6 +11,13 @@
 - **Create route folders and grant the task account access**: creates Source/Spool/Archive and the
   lock and alert folders when missing. Grants Modify on each and Read on the settings, after
   ScanBridge's own folder rules: separate folders, and Source and Spool on one drive.
+- **Manage routes**: add a route (Source picked; Spool and Archive proposed per route on the same
+  drive; short generic names, with System and Worker reserved), rename one, change its readiness
+  age, or remove one. After adding, each dependent step is offered in turn: folders and access,
+  destination, site access, Sysmon update. Rename and remove are refused while the route has
+  files in Spool or PDFs in Source. The last route cannot be removed.
+- **Grant the ingestion app access to route sites**: write for the configured app on every route's
+  site, for routes added later. Already-granted sites are left alone.
 - Shared certificate-location and key-grant prompts for the alert and ingestion apps. The settings
   writer lays out lists of tables (Routes) one per block. The setup menu follows setup order.
   Requires NSP.M365.Graph 0.1.3.

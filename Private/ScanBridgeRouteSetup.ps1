@@ -13,6 +13,40 @@ function ConvertTo-NSPScanBridgeOrderedRoute {
     $ordered
 }
 
+function Test-NSPScanBridgeRouteFolderRule {
+    # The worker's folder rules for a route set: every Source/Spool/Archive given, all separate
+    # and non-overlapping, Source and Spool on one drive. Returns a message, or $null when fine.
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Routes)
+    $full={ param($p) [IO.Path]::GetFullPath([string]$p).TrimEnd('\') }
+    $folders=[System.Collections.Generic.List[object]]::new()
+    foreach($route in $Routes) {
+        foreach($kind in 'Source','Spool','Archive') {
+            if(Test-NSPPlaceholderValue $route[$kind]) { return "Route '$($route.Name)' has no $kind folder." }
+            $folders.Add([pscustomobject]@{Path=(& $full $route[$kind]);Why="$($route.Name) $kind"})
+        }
+        if([IO.Path]::GetPathRoot((& $full $route.Source)) -ine [IO.Path]::GetPathRoot((& $full $route.Spool))) { return "Route '$($route.Name)': Source and Spool must be on the same drive." }
+    }
+    for($i=0;$i -lt $folders.Count;$i++) { for($j=$i+1;$j -lt $folders.Count;$j++) {
+        $a=$folders[$i].Path+'\'; $b=$folders[$j].Path+'\'
+        if($a.StartsWith($b,[StringComparison]::OrdinalIgnoreCase) -or $b.StartsWith($a,[StringComparison]::OrdinalIgnoreCase)) { return "$($folders[$i].Why) and $($folders[$j].Why) overlap; every route folder must be separate." }
+    } }
+    $null
+}
+
+function Grant-NSPScanBridgeRouteSite {
+    # Plan, then on confirm grant, write for the ingestion app on the site behind every route.
+    param([Parameter(Mandatory)][object[]]$Routes,[Parameter(Mandatory)][string]$ClientId,[Parameter(Mandatory)][string]$DisplayName,[bool]$DryRun)
+    $sites=@($Routes | ForEach-Object { (Find-NSPGraphSite -DriveId $_.DriveId).SiteId } | Select-Object -Unique)
+    foreach($siteId in $sites) {
+        $grant=Grant-NSPGraphSitePermission -SiteId $siteId -ClientId $ClientId -DisplayName $DisplayName
+        Write-NSPConsoleLine ("Site {0}: {1}" -f $siteId,$grant.Message)
+        if($grant.Status -eq 'PlanOnly' -and -not $DryRun -and (Read-NSPConfirm -Prompt "Give '$DisplayName' write access to this site only?" -DefaultYes)) {
+            $grant=Grant-NSPGraphSitePermission -SiteId $siteId -ClientId $ClientId -DisplayName $DisplayName -Execute -Confirm:$false
+            Write-NSPConsoleLine $grant.Message -Role Success
+        }
+    }
+}
+
 function Write-NSPScanBridgeSettingsEntry {
     # Preview, confirm, write with backup; DRY RUN previews only. Returns $true when written.
     param([Parameter(Mandatory)][string]$ConfigurationPath,[Parameter(Mandatory)][string]$Key,[Parameter(Mandatory)][object]$Value,[bool]$DryRun)
@@ -93,13 +127,13 @@ function Invoke-NSPScanBridgeDestinationSetup {
         folder browser, or a pasted link. Read-only Graph calls except an optional new folder.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$ConfigurationPath)
+    param([Parameter(Mandatory)][string]$ConfigurationPath,[string]$RouteName)
     Import-NSPToolkitModule -Name NSP.M365.Graph -MinimumVersion 0.1.3
     $dryRun=[bool](Get-NSPDryRun)
     $config=Import-PowerShellDataFile -LiteralPath $ConfigurationPath -ErrorAction Stop
     $routes=@($config.Routes | Where-Object { $_ })
     if(-not $routes.Count) { throw 'The settings file has no Routes.' }
-    $index=Select-NSPScanBridgeRoute -Routes $routes -Prompt 'Which route gets a destination?'
+    $index=if($RouteName) { @(for($i=0;$i -lt $routes.Count;$i++) { if($routes[$i].Name -eq $RouteName) { $i } })[0] } else { Select-NSPScanBridgeRoute -Routes $routes -Prompt 'Which route gets a destination?' }
     if($null -eq $index) { return }
     $answers=Get-NSPScanBridgeAnswerTable
     $context=Connect-NSPScanBridgeAdmin -Scopes @('Sites.ReadWrite.All') -Config $config
@@ -174,15 +208,7 @@ function Invoke-NSPScanBridgeIngestionSetup {
     if($target.ServiceAccount) { Grant-NSPScanBridgeCertificateKey -ServiceAccount $target.ServiceAccount -Thumbprint $record.CertificateThumbprint -Purpose 'ingestion' -Answers $answers -DryRun $dryRun }
 
     # Sites.Selected reaches nothing until each route's site names the app.
-    $sites=@($routes | ForEach-Object { (Find-NSPGraphSite -DriveId $_.DriveId).SiteId } | Select-Object -Unique)
-    foreach($siteId in $sites) {
-        $grant=Grant-NSPGraphSitePermission -SiteId $siteId -ClientId $record.ClientId -DisplayName $appName
-        Write-NSPConsoleLine ("Site {0}: {1}" -f $siteId,$grant.Message)
-        if($grant.Status -eq 'PlanOnly' -and -not $dryRun -and (Read-NSPConfirm -Prompt "Give '$appName' write access to this site only?" -DefaultYes)) {
-            $grant=Grant-NSPGraphSitePermission -SiteId $siteId -ClientId $record.ClientId -DisplayName $appName -Execute -Confirm:$false
-            Write-NSPConsoleLine $grant.Message -Role Success
-        }
-    }
+    Grant-NSPScanBridgeRouteSite -Routes $routes -ClientId $record.ClientId -DisplayName $appName -DryRun $dryRun
 
     $current=if($config.Auth -is [Collections.IDictionary]){$config.Auth}else{@{}}
     if(-not (Test-NSPPlaceholderValue $current.ClientId) -and [string]$current.ClientId -ne [string]$record.ClientId) {
@@ -208,18 +234,10 @@ function Invoke-NSPScanBridgeFolderSetup {
     $config=Import-PowerShellDataFile -LiteralPath $ConfigurationPath -ErrorAction Stop
     $routes=@($config.Routes | Where-Object { $_ })
     $full={ param($p) [IO.Path]::GetFullPath([string]$p).TrimEnd('\') }
+    $problem=Test-NSPScanBridgeRouteFolderRule -Routes $routes
+    if($problem) { Write-NSPConsoleLine $problem -Role Error; return }
     $folders=[System.Collections.Generic.List[object]]::new()
-    foreach($route in $routes) {
-        foreach($kind in 'Source','Spool','Archive') {
-            if(Test-NSPPlaceholderValue $route[$kind]) { Write-NSPConsoleLine "Route '$($route.Name)' has no $kind folder." -Role Error; return }
-            $folders.Add([pscustomobject]@{Path=(& $full $route[$kind]);Why="$($route.Name) $kind";Route=$route.Name})
-        }
-        if([IO.Path]::GetPathRoot((& $full $route.Source)) -ine [IO.Path]::GetPathRoot((& $full $route.Spool))) { Write-NSPConsoleLine "Route '$($route.Name)': Source and Spool must be on the same drive." -Role Error; return }
-    }
-    for($i=0;$i -lt $folders.Count;$i++) { for($j=$i+1;$j -lt $folders.Count;$j++) {
-        $a=$folders[$i].Path+'\'; $b=$folders[$j].Path+'\'
-        if($a.StartsWith($b,[StringComparison]::OrdinalIgnoreCase) -or $b.StartsWith($a,[StringComparison]::OrdinalIgnoreCase)) { Write-NSPConsoleLine "$($folders[$i].Why) and $($folders[$j].Why) overlap; every route folder must be separate." -Role Error; return }
-    } }
+    foreach($route in $routes) { foreach($kind in 'Source','Spool','Archive') { $folders.Add([pscustomobject]@{Path=(& $full $route[$kind]);Why="$($route.Name) $kind";Route=$route.Name}) } }
     if(-not (Test-NSPPlaceholderValue $config.LockPath)) { $folders.Add([pscustomobject]@{Path=(Split-Path -Parent (& $full $config.LockPath));Why='worker lock folder';Route=$null}) }
     if($config.Alerts -is [Collections.IDictionary] -and -not (Test-NSPPlaceholderValue $config.Alerts.StateDirectory)) { $folders.Add([pscustomobject]@{Path=(& $full $config.Alerts.StateDirectory);Why='alert state folder';Route=$null}) }
 
@@ -243,4 +261,125 @@ function Invoke-NSPScanBridgeFolderSetup {
     Write-NSPConsoleLine ("{0}: {1}" -f $ConfigurationPath,$grant.Status) -Role $(if($grant.Status -eq 'Granted'){'Success'}else{'Warning'})
     Save-NSPScanBridgeAnswer @{ServiceAccount=$account}
     Write-NSPConsoleLine 'Direct grants do not prove effective access: the task account''s first run does.' -Role Muted
+}
+
+function Invoke-NSPScanBridgeSiteGrantSetup {
+    <#
+        Grants the configured ingestion app (Auth.ClientId) write on the site behind every route,
+        for example after adding a route in another site. Already-granted sites are left alone.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ConfigurationPath)
+    Import-NSPToolkitModule -Name NSP.M365.Graph -MinimumVersion 0.1.3
+    $dryRun=[bool](Get-NSPDryRun)
+    $config=Import-PowerShellDataFile -LiteralPath $ConfigurationPath -ErrorAction Stop
+    $routes=@($config.Routes | Where-Object { $_ -and -not (Test-NSPPlaceholderValue $_.DriveId) })
+    if(-not $routes.Count) { Write-NSPConsoleLine "No route has a SharePoint destination yet ('Pick the SharePoint destination')." -Role Error; return }
+    $clientId=if($config.Auth -is [Collections.IDictionary]){[string]$config.Auth.ClientId}else{''}
+    if(Test-NSPPlaceholderValue $clientId) { Write-NSPConsoleLine "The settings have no ingestion app yet ('Create the ingestion app and site access')." -Role Error; return }
+    $answers=Get-NSPScanBridgeAnswerTable
+    $context=Connect-NSPScanBridgeAdmin -Scopes @('Sites.FullControl.All') -Config $config
+    if(-not $context) { return }
+    Grant-NSPScanBridgeRouteSite -Routes $routes -ClientId $clientId -DisplayName $(if($answers.IngestAppName){[string]$answers.IngestAppName}else{'NSP-ScanBridge-Ingest'}) -DryRun $dryRun
+}
+
+function Test-NSPScanBridgeRouteName {
+    # Short generic names: they appear in dispatch tickets. Returns a message, or $null when fine.
+    param([AllowEmptyString()][string]$Name,[object[]]$Routes,[string]$Except)
+    if($Name -notmatch '^[A-Za-z][A-Za-z0-9-]{0,31}$') { return 'Use 1-32 letters, digits or dashes, starting with a letter (for example FrontDesk or Scanner2).' }
+    if($Name -in @('System','Worker')) { return "'$Name' is reserved for ScanBridge's own alerts." }
+    if(@($Routes | Where-Object { $_.Name -ieq $Name -and $_.Name -ne $Except }).Count) { return "A route named '$Name' already exists." }
+    $null
+}
+
+function Get-NSPScanBridgeRouteBacklog {
+    # Files still in a route's Spool (claimed jobs and receipts) or PDFs waiting in its Source.
+    param([Parameter(Mandatory)][Collections.IDictionary]$Route)
+    $spool=if(-not (Test-NSPPlaceholderValue $Route.Spool) -and (Test-Path -LiteralPath $Route.Spool -PathType Container)) { @(Get-ChildItem -LiteralPath $Route.Spool -File -Recurse -Force -ErrorAction SilentlyContinue).Count } else { 0 }
+    $source=if(-not (Test-NSPPlaceholderValue $Route.Source) -and (Test-Path -LiteralPath $Route.Source -PathType Container)) { @(Get-ChildItem -LiteralPath $Route.Source -File -Filter '*.pdf' -Force -ErrorAction SilentlyContinue).Count } else { 0 }
+    [pscustomobject]@{Spool=$spool;Source=$source;Busy=($spool+$source) -gt 0}
+}
+
+function Invoke-NSPScanBridgeRouteManager {
+    <#
+        Lists the routes; adds one (Source picked, Spool/Archive derived per route), renames one,
+        changes its readiness age, or removes one. Rename and remove are refused while the route
+        has jobs. After adding, offers each dependent step: folders and access, SharePoint
+        destination, site access, Sysmon update.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ConfigurationPath)
+    $dryRun=[bool](Get-NSPDryRun)
+    $config=Import-PowerShellDataFile -LiteralPath $ConfigurationPath -ErrorAction Stop
+    $routes=@($config.Routes | Where-Object { $_ } | ForEach-Object { ConvertTo-NSPScanBridgeOrderedRoute -Route $_ })
+    $choices=@(for($i=0;$i -lt $routes.Count;$i++) {
+        $route=$routes[$i]
+        $dest=if(Test-NSPPlaceholderValue $route.DriveId){'no SharePoint destination yet'}else{'destination set'}
+        $age=if($route.MinimumAgeSeconds){$route.MinimumAgeSeconds}else{20}
+        [pscustomobject]@{Label=('{0}: {1}' -f $route.Name,$route.Source);Value=$i;Help="$dest; age $age s. Open to rename, change age or remove."}
+    })
+    $choices+=[pscustomobject]@{Key='A';Label='Add a route';Value='Add';Help='Pick the Source folder; Spool and Archive are proposed per route on the same drive.'}
+    $pick=Read-NSPMenu -Choices $choices -Prompt 'Routes' -CancelLabel 'Back'
+    if($null -eq $pick) { return }
+
+    if($pick -eq 'Add') {
+        Write-NSPConsoleLine 'Route names appear in dispatch tickets: keep them generic (no patient, person or document names).' -Role Muted
+        do {
+            $name=(Read-NSPNonEmpty -Prompt 'Route name').Trim()
+            $problem=Test-NSPScanBridgeRouteName -Name $name -Routes $routes
+            if($problem) { Write-NSPConsoleLine $problem -Role Warning }
+        } while($problem)
+        $folderArgs=@{Prompt='Source folder (where the scanner saves)'}
+        if(-not $dryRun) { $folderArgs.Create=$true }
+        $source=Read-NSPFolderPath @folderArgs
+        $drive=[IO.Path]::GetPathRoot([IO.Path]::GetFullPath($source))
+        $spool=Read-NSPOptional -Prompt 'Spool folder' -Default (Join-Path $drive "ScanBridge\$name\Spool")
+        $archive=Read-NSPOptional -Prompt 'Archive folder' -Default (Join-Path $drive "ScanBridge\$name\Archive")
+        $new=[ordered]@{Name=$name;Source=$source;Spool=$spool;Archive=$archive;DriveId='<drive-id>';FolderItemId='<folder-id>';MinimumAgeSeconds=20;VerifyRemoteAfterUpload=$false}
+        $problem=Test-NSPScanBridgeRouteFolderRule -Routes (@($routes)+@($new))
+        if($problem) { Write-NSPConsoleLine $problem -Role Error; return }
+        if(-not (Write-NSPScanBridgeSettingsEntry -ConfigurationPath $ConfigurationPath -Key Routes -Value (@($routes)+@($new)) -DryRun $dryRun)) { return }
+        $steps=@(
+            @{Prompt="Next: create '$name' folders and grant the task account access?";Run={ Invoke-NSPScanBridgeFolderSetup -ConfigurationPath $ConfigurationPath }}
+            @{Prompt="Next: pick the SharePoint destination for '$name'?";Run={ Invoke-NSPScanBridgeDestinationSetup -ConfigurationPath $ConfigurationPath -RouteName $name }}
+            @{Prompt='Next: grant the ingestion app access to that site (skipped if it already has it)?';Run={ Invoke-NSPScanBridgeSiteGrantSetup -ConfigurationPath $ConfigurationPath }}
+            @{Prompt='Next: update the Sysmon scan trigger to watch the new Source?';Run={ Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null }}
+        )
+        foreach($step in $steps) {
+            if(-not (Read-NSPConfirm -Prompt $step.Prompt -DefaultYes)) { continue }
+            try { & $step.Run } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error }
+        }
+        return
+    }
+
+    $route=$routes[$pick]
+    $age=if($route.MinimumAgeSeconds){$route.MinimumAgeSeconds}else{20}
+    $action=Read-NSPMenu -Prompt "Route '$($route.Name)'" -CancelLabel 'Back' -Choices @(
+        [pscustomobject]@{Label='Rename';Value='Rename';Help='Refused while the route has jobs: receipts are bound to the route name.'}
+        [pscustomobject]@{Label='Change readiness age';Value='Age';Help="Seconds a PDF must be unchanged before upload (now $age)."}
+        [pscustomobject]@{Label='Remove';Value='Remove';Help='Refused while the route has jobs or waiting PDFs. Folders and SharePoint content are left as they are.'}
+    )
+    if($null -eq $action) { return }
+    if($action -in 'Rename','Remove') {
+        $backlog=Get-NSPScanBridgeRouteBacklog -Route $route
+        if($backlog.Busy) { Write-NSPConsoleLine ("Route '{0}' still has {1} file(s) in Spool and {2} PDF(s) waiting in Source. Let them finish (see 'Inspect ScanBridge configuration health') first." -f $route.Name,$backlog.Spool,$backlog.Source) -Role Error; return }
+    }
+    if($action -eq 'Rename') {
+        do {
+            $name=(Read-NSPNonEmpty -Prompt 'New route name').Trim()
+            $problem=Test-NSPScanBridgeRouteName -Name $name -Routes $routes -Except $route.Name
+            if($problem) { Write-NSPConsoleLine $problem -Role Warning }
+        } while($problem)
+        $route['Name']=$name
+    } elseif($action -eq 'Age') {
+        do { $typed=(Read-NSPNonEmpty -Prompt 'Readiness age in seconds (1-3600)').Trim() } until($typed -match '^\d{1,4}$' -and [int]$typed -ge 1 -and [int]$typed -le 3600)
+        $route['MinimumAgeSeconds']=[int]$typed
+        Write-NSPConsoleLine 'A Sysmon-triggered task waits the largest route age + 30 s; re-plan the task if this route is now the slowest.' -Role Muted
+    } else {
+        if($routes.Count -eq 1) { Write-NSPConsoleLine 'ScanBridge needs at least one route; add another before removing this one.' -Role Error; return }
+        $routes=@($routes | Where-Object { $_.Name -ne $route.Name })
+    }
+    if((Write-NSPScanBridgeSettingsEntry -ConfigurationPath $ConfigurationPath -Key Routes -Value $routes -DryRun $dryRun) -and $action -eq 'Remove' -and (Read-NSPConfirm -Prompt 'Update the Sysmon scan trigger to stop watching that Source?' -DefaultYes)) {
+        try { Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error }
+    }
 }

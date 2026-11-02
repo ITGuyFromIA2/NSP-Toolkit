@@ -17,8 +17,10 @@ function Start-NSPScanBridgeSetup {
             [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies';Help='Lists installed versions of the modules setup and the task use.'}
             [pscustomobject]@{Label='Install PowerShell 7 and ScanBridge modules for all users';Value='Install';Help='What the task account needs: PowerShell 7, NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and the Graph SDK in both all-users module folders. Older Graph copies are replaced. Plans first.'}
             [pscustomobject]@{Label='Prepare a local service account';Value='Account';Help='Create the non-admin account the task runs as, with the batch-logon right.'}
+            [pscustomobject]@{Label='Manage routes (add, rename, change age, remove)';Value='Routes';Help='Add a route (Source picked, Spool/Archive per route) and walk through its folders, destination, site access and Sysmon. Rename/remove refused while jobs exist.'}
             [pscustomobject]@{Label='Create route folders and grant the task account access';Value='Folders';Help='Source, Spool, Archive, lock and alert folders: created when missing, Modify for the task account, Read on the settings. Plans first.'}
             [pscustomobject]@{Label='Pick the SharePoint destination for a route';Value='Destination';Help='Search sites (or paste a folder link), pick the library and folder; writes DriveId and FolderItemId. No IDs typed.'}
+            [pscustomobject]@{Label='Grant the ingestion app access to route sites';Value='SiteGrant';Help='Write for the configured ingestion app on every route''s site; already-granted sites are left alone. For routes added later.'}
             [pscustomobject]@{Label='Create the ingestion app and site access';Value='Ingest';Help='Dedicated app with Sites.Selected only, write on each route''s site, certificate for the task account; writes Auth. Plans first.'}
             [pscustomobject]@{Label='Configure dispatch alerting';Value='Alerts';Help='Pick the sender mailbox in the client tenant, create a scoped alert app and write the Alerts settings. Plans first.'}
             [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health';Help='Route, receipt and queue health from the settings file. Read-only.'}
@@ -47,6 +49,8 @@ function Start-NSPScanBridgeSetup {
             if(-not $ConfigurationPath) { $ConfigurationPath=Read-NSPScanBridgeConfigurationPath }
             if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file.' }
             $ConfigurationPath=(Get-Item -LiteralPath $ConfigurationPath).FullName
+            if($choice -eq 'Routes') { Invoke-NSPScanBridgeRouteManager -ConfigurationPath $ConfigurationPath; continue }
+            if($choice -eq 'SiteGrant') { Invoke-NSPScanBridgeSiteGrantSetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'Folders') { Invoke-NSPScanBridgeFolderSetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'Destination') { Invoke-NSPScanBridgeDestinationSetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'Ingest') { Invoke-NSPScanBridgeIngestionSetup -ConfigurationPath $ConfigurationPath; continue }
