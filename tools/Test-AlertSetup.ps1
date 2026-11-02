@@ -8,6 +8,7 @@ $ErrorActionPreference='Stop'
 if(-not $SourceRoot){$SourceRoot=Split-Path -Parent $PSScriptRoot}
 $SourceRoot=(Resolve-Path -LiteralPath $SourceRoot).Path
 . (Join-Path $SourceRoot 'Private/ScanBridgeAlertSetup.ps1')
+. (Join-Path $SourceRoot 'Private/ScanBridgeSetupPrompts.ps1')
 $state=@{Checks=0}
 function Check($condition,$message) {if(-not $condition){throw $message};$state.Checks++}
 $root=Join-Path ([IO.Path]::GetTempPath()) ('nsp-toolkit-alerts-'+[guid]::NewGuid().ToString('N'))
@@ -71,7 +72,18 @@ try {
     function Save-NSPToolAnswers { [CmdletBinding(SupportsShouldProcess)] param($Tool,$Answers) $state.Saved+=,([pscustomobject]$Answers) }
     function Write-NSPConsoleLine { param($Text,$Role) if($Role -eq 'Error'){$state.Errors+=,$Text} }
     function Write-Host { param($Object) }
-    function Read-NSPNonEmpty { param($Prompt,$CurrentValue) $CurrentValue }
+    function Read-NSPNonEmpty {
+        param($Prompt,$CurrentValue)
+        if(@($state.Typed).Count -and $Prompt -match 'account|interval|path') { $next=$state.Typed[0]; $state.Typed=@($state.Typed | Select-Object -Skip 1); return $next }
+        $CurrentValue
+    }
+    function Get-NSPLocalServiceAccount { param($Name) if($Name -eq 'ScanBridge'){[pscustomobject]@{Name=$Name;Account="PC\$Name"}} }
+    function Grant-NSPLocalAccountCertificateAccess {
+        [CmdletBinding(SupportsShouldProcess)] param($Name,$Thumbprint,[switch]$Execute)
+        $state.Grants+=,[pscustomobject]@{Name=$Name;Thumbprint=$Thumbprint;Execute=[bool]$Execute}
+        [pscustomobject]@{Status=$(if($Execute){'Granted'}else{'PlanOnly'});Account="PC\$Name";Rights='Read'}
+    }
+    function Test-NSPScanBridgeElevated { $state.Elevated }
     function Read-NSPOptional { param($Prompt,$Default) $Default }
     function Read-NSPConfirm { param($Prompt,[switch]$DefaultYes) $state.Confirms+=,$Prompt; $true }
     function Read-NSPMenu {
@@ -112,6 +124,7 @@ try {
         $state.Answers=[pscustomobject]@{DispatchAddress='dispatch@contoso.example';Other='kept'}
         $state.Saved=@(); $state.Errors=@(); $state.Confirms=@(); $state.Menus=@(); $state.Searches=@()
         $state.Register=@(); $state.Scope=@(); $state.Mail=@(); $state.AppOnly=$null
+        $state.Typed=@(); $state.Grants=@(); $state.Elevated=$true
         # Sign-in, sender (first result), certificate store, enable alerting.
         $state.Menu=@('Broker',0,'Cert:\CurrentUser\My',$true)
     }
@@ -140,6 +153,51 @@ try {
     $state.Tenant='dddddddd-0000-0000-0000-000000000004'
     $threw=$false; try { Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config } catch { $threw=$_.Exception.Message -match 'Sign in to the client' }
     Check ($threw -and $state.Searches.Count -eq 0 -and $state.Register.Count -eq 0) 'A sign-in to another tenant was not refused before searching.'
+
+    # Service account: computer store plus key access for that one local account, typed as .\name.
+    Reset-Flow
+    $state.Menu=@('Broker',0,'ServiceAccount',$true)
+    $state.Typed=@('.\ScanBridge')
+    Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config
+    Check ($state.Errors.Count -eq 0) "Service-account path reported errors: $($state.Errors -join '; ')"
+    Check ($state.Register[1].Store -eq 'Cert:\LocalMachine\My') 'Service-account certificate was not placed in the computer store.'
+    Check ($state.Grants.Count -eq 2 -and -not $state.Grants[0].Execute -and $state.Grants[1].Execute -and $state.Grants[1].Name -eq 'ScanBridge' -and $state.Grants[1].Thumbprint -eq 'THUMB') 'Key access was not planned, then granted to the service account only.'
+    Check (@($state.Saved | Where-Object { $_.ServiceAccount -eq 'ScanBridge' }).Count -ge 1) 'Service account was not saved as an answer.'
+
+    Reset-Flow
+    $state.Menu=@('Broker',0,'ServiceAccount')
+    $state.Typed=@('.\ScanBridge'); $state.Elevated=$false
+    Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config
+    Check ($state.Errors.Count -eq 1 -and $state.Register.Count -eq 0) 'A non-elevated computer-store run was not stopped before registration.'
+
+    Reset-Flow -DryRun
+    $state.Menu=@('Broker',0,'ServiceAccount')
+    $state.Typed=@('.\NotYetCreated')
+    Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config
+    Check ($state.Errors.Count -eq 0 -and $state.Grants.Count -eq 0 -and $state.Saved.Count -eq 0) 'DRY RUN with a not-yet-created account did not stop cleanly after the plan.'
+
+    # Local account names and task pick lists.
+    $machine=[Environment]::MachineName
+    Check ((ConvertTo-NSPLocalAccountName '.\ScanBridge') -eq 'ScanBridge' -and (ConvertTo-NSPLocalAccountName "$machine\ScanBridge") -eq 'ScanBridge' -and (ConvertTo-NSPLocalAccountName 'ScanBridge') -eq 'ScanBridge') 'Local account forms were not normalized.'
+    Check ($null -eq (ConvertTo-NSPLocalAccountName 'OTHERPC\ScanBridge') -and $null -eq (ConvertTo-NSPLocalAccountName '.\bad name')) 'A remote or invalid account was accepted as local.'
+    function Get-LocalUser { @([pscustomobject]@{Name='ScanBridge';Enabled=$true;Description='ScanBridge service'},[pscustomobject]@{Name='Administrator';Enabled=$true;Description=''}) }
+    Reset-Flow
+    $state.Menu=@('Type'); $state.Typed=@('.\ScanBridge')
+    Check ((Read-NSPScanBridgeRunAccount) -eq "$machine\ScanBridge" -and $state.Saved[-1].ServiceAccount -eq 'ScanBridge') 'Typed .\name did not become this computer''s account.'
+    $state.Menu=@(0)
+    Check ((Read-NSPScanBridgeRunAccount) -eq "$machine\ScanBridge") 'Listed local account was not offered first.'
+    $state.Menu=@('SYSTEM')
+    Check ((Read-NSPScanBridgeRunAccount) -eq 'SYSTEM') 'SYSTEM choice failed.'
+    $state.Menu=@('Type'); $state.Typed=@('CONTOSO\svc-scan$')
+    Check ((Read-NSPScanBridgeRunAccount) -eq 'CONTOSO\svc-scan$') 'gMSA was not passed through.'
+    $state.Menu=@('Type'); $state.Typed=@('OTHERPC\person')
+    $threw=$false; try { Read-NSPScanBridgeRunAccount | Out-Null } catch { $threw=$true }
+    Check $threw 'A non-local, non-gMSA account was accepted.'
+    $state.Menu=@(1)
+    Check ((Read-NSPScanBridgeTaskInterval) -eq 10 -and $state.Saved[-1].TaskMinutes -eq 10) 'Interval pick list failed.'
+    $state.Menu=@(0)
+    $hostPick=Read-NSPScanBridgeTaskHost
+    Check ([IO.Path]::GetFileName($hostPick) -in @('pwsh.exe','powershell.exe') -and (Test-Path -LiteralPath $hostPick)) 'PowerShell host pick list did not offer an installed host.'
 
     Microsoft.PowerShell.Utility\Write-Host ('Passed: {0} alert setup checks in {1}; tenant, Exchange and console calls mocked.' -f $state.Checks,$PSVersionTable.PSVersion)
 } finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }

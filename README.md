@@ -83,7 +83,10 @@ client values:
 3. `Find-NSPGraphMailbox` searches the tenant (default term `scan`) and lists matches with a hint
    such as "likely a shared mailbox"; an exact address can be typed instead.
 4. A dedicated alert app with **no** Graph permissions is planned, then created after confirmation,
-   with its certificate in the store of the account the task runs as.
+   with its certificate in the store of the account the task runs as. For a dedicated local
+   service account (entered as `.\name`), the certificate goes in the computer store and only that
+   account is granted read access to its private key. Re-run setup after a renewal to grant the
+   new key.
 5. `Set-NSPGraphMailSendScope` plans, then applies, Exchange RBAC for Applications so the app can
    send as that one mailbox only, and verifies the result with Exchange.
 6. The new `Alerts` block is previewed next to the current one and written with a timestamped

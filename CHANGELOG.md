@@ -7,6 +7,9 @@
   picked from a tenant search, and the alert app has no Graph permissions, sending only through
   one-mailbox Exchange RBAC. The settings `Alerts` block is written in place with a backup.
   Requires NSP.M365.Graph 0.1.2 with `Find-NSPGraphMailbox` and `Set-NSPGraphMailSendScope`.
+- ScanBridge setup: certificate option for a local service account (computer store plus key read
+  for that account only). Pick lists replace the typed PowerShell host, run account (`.\name`
+  accepted) and interval, and the settings path is remembered.
 
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.

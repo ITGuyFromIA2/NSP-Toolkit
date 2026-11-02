@@ -77,6 +77,10 @@ function Set-NSPPsd1TopLevelEntry {
     $result
 }
 
+function Test-NSPScanBridgeElevated {
+    ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Test-NSPPlaceholderValue {
     param([AllowNull()][object]$Value)
     [string]::IsNullOrWhiteSpace([string]$Value) -or ([string]$Value) -match '^<.*>$'
@@ -173,21 +177,47 @@ function Invoke-NSPScanBridgeAlertSetup {
     $recordDirectory=Read-NSPOptional -Prompt 'Folder for the alert app record (client ID and thumbprint, never a key)' -Default (Join-Path (Split-Path -Parent $ConfigurationPath) 'AlertApp')
     $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $store=Read-NSPMenu -Prompt 'Where should the alert certificate live?' -CancelLabel 'Back' -Choices @(
+        [pscustomobject]@{Label='Service account (computer store, key readable by that account only)';Value='ServiceAccount';Help='For a dedicated local ScanBridge account: certificate in Cert:\LocalMachine\My, read access to its private key granted to that one account. Needs an elevated session.'}
         [pscustomobject]@{Label="This account's store (Cert:\CurrentUser\My, $identity)";Value='Cert:\CurrentUser\My';Help='Choose when the ScanBridge task runs as this account: run setup signed in as the service account.'}
         [pscustomobject]@{Label='Computer store (Cert:\LocalMachine\My)';Value='Cert:\LocalMachine\My';Help='Choose when the task runs as SYSTEM. Needs an elevated session.'}
     )
     if($null -eq $store) { return }
+    $serviceAccount=$null
+    if($store -eq 'ServiceAccount') {
+        Import-NSPToolkitModule -Name NSP.Win.LocalAccount -MinimumVersion 0.1.0
+        $typed=Read-NSPNonEmpty -Prompt 'Local account the ScanBridge task runs as (.\name)' -CurrentValue $(if($answers.ServiceAccount){'.\'+[string]$answers.ServiceAccount}else{''})
+        $serviceAccount=ConvertTo-NSPLocalAccountName -Account $typed
+        if(-not $serviceAccount) { Write-NSPConsoleLine "'$typed' is not a local account name on this computer (use .\name)." -Role Error; return }
+        $found=try { Get-NSPLocalServiceAccount -Name $serviceAccount } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error; return }
+        if(-not $found) {
+            if(-not $dryRun) { Write-NSPConsoleLine "Local account '$serviceAccount' does not exist. Create it with 'Prepare a local service account' first." -Role Error; return }
+            Write-NSPConsoleLine "Local account '$serviceAccount' does not exist yet; create it before the real run." -Role Warning
+        }
+        $store='Cert:\LocalMachine\My'
+    }
+    if($store -like 'Cert:\LocalMachine\*' -and -not (Test-NSPScanBridgeElevated)) { Write-NSPConsoleLine 'The computer certificate store needs an elevated session. Restart PowerShell as administrator.' -Role Error; return }
     $register=@{AppName=$appName;ApplicationPermissions=@();RecordDirectory=$recordDirectory;CertificateStore=$store;TenantId=$context.TenantId}
     $app=Register-NSPGraphAppOnlyRegistration @register
     if($app.Status -eq 'ExistingUnrecorded') { Write-NSPConsoleLine $app.Message -Role Error; return }
     if($app.Status -eq 'PlanOnly') {
         Write-NSPConsoleLine ("Alert app plan: {0}." -f ($app.Actions -join ', '))
-        if($dryRun) { Write-NSPConsoleLine 'DRY RUN: no app, certificate or Exchange scope created; the Alerts block is unchanged.' -Role Warning; return }
+        if($serviceAccount) { Write-NSPConsoleLine "Then: read access to the new certificate's private key for $serviceAccount only." }
+        if($dryRun) { Write-NSPConsoleLine 'DRY RUN: no app, certificate, key access or Exchange scope created; the Alerts block is unchanged.' -Role Warning; return }
         if(-not (Read-NSPConfirm -Prompt "Create or repair '$appName' in tenant $($context.TenantId) now?")) { return }
         $app=Register-NSPGraphAppOnlyRegistration @register -Execute -Confirm:$false
     }
     $record=Get-Content -LiteralPath $app.RecordPath -Raw | ConvertFrom-Json
     if(-not $dryRun -and $appName -ne $answers.AlertAppName) { $answers.AlertAppName=$appName; Save-NSPToolAnswers -Tool ScanBridge -Answers $answers -Confirm:$false }
+    if($serviceAccount) {
+        $grant=Grant-NSPLocalAccountCertificateAccess -Name $serviceAccount -Thumbprint $record.CertificateThumbprint
+        Write-NSPConsoleLine ("Key access plan: {0} read on {1}." -f $grant.Rights,$grant.Account)
+        if(-not $dryRun -and (Read-NSPConfirm -Prompt "Give $($grant.Account) read access to the alert certificate's private key?" -DefaultYes)) {
+            $grant=Grant-NSPLocalAccountCertificateAccess -Name $serviceAccount -Thumbprint $record.CertificateThumbprint -Execute -Confirm:$false
+        }
+        if($grant.Status -eq 'Granted') { Write-NSPConsoleLine "Granted. A renewed certificate has a new key: re-run this setup after renewal to grant it again." -Role Success }
+        else { Write-NSPConsoleLine "Key access not granted; $serviceAccount cannot sign in as the alert app yet." -Role Warning }
+        if(-not $dryRun -and $serviceAccount -ne $answers.ServiceAccount) { $answers.ServiceAccount=$serviceAccount; Save-NSPToolAnswers -Tool ScanBridge -Answers $answers -Confirm:$false }
+    }
 
     # 5. Exchange RBAC for Applications: Mail.Send as this sender only.
     Write-NSPConsoleLine 'Exchange Online sign-in follows (an Exchange administrator is needed to scope the app).' -Role Muted
@@ -243,6 +273,7 @@ function Invoke-NSPScanBridgeAlertSetup {
         ) -join [Environment]::NewLine
         Send-NSPGraphMail -From $scope.PrimarySmtpAddress -To $to -Subject '[NSP.ScanBridge] Alert setup test' -Body $body -ErrorAction Stop
         Write-NSPConsoleLine 'Graph accepted the test message. Confirm with dispatch that a ticket arrived; acceptance is not delivery.' -Role Success
+        if($serviceAccount) { Write-NSPConsoleLine "This test ran as $identity; it does not prove $serviceAccount can read the key. The first scheduled alert run does." -Role Muted }
     } catch {
         Write-NSPConsoleLine "Test message failed: $($_.Exception.Message)" -Role Error
         Write-NSPConsoleLine 'A new Exchange scope can take up to two hours to apply to sendMail. The certificate must be in this account''s chosen store.' -Role Warning

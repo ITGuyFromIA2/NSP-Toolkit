@@ -38,7 +38,7 @@ function Start-NSPScanBridgeSetup {
                 Start-NSPLocalAccountManager
                 continue
             }
-            if(-not $ConfigurationPath) { $ConfigurationPath=Read-Host 'Existing ScanBridge settings PSD1 path' }
+            if(-not $ConfigurationPath) { $ConfigurationPath=Read-NSPScanBridgeConfigurationPath }
             if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file.' }
             $ConfigurationPath=(Get-Item -LiteralPath $ConfigurationPath).FullName
             if($choice -eq 'Alerts') { Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $ConfigurationPath; continue }
@@ -56,10 +56,12 @@ function Start-NSPScanBridgeSetup {
                 $scanModule=Get-Module NSP.ScanBridge | Sort-Object Version -Descending | Select-Object -First 1
                 $runner=Join-Path $scanModule.ModuleBase 'scripts/Run-ScanBridge.ps1'
                 $scheduling=Get-Module NSP.Win.ScheduledTask | Sort-Object Version -Descending | Select-Object -First 1
-                $hostPath=Read-Host 'Full path to powershell.exe or pwsh.exe'
-                $runAs=Read-Host 'Run account (SYSTEM, local name, computer\name or domain\gMSA$)'
-                if($runAs -notin @('SYSTEM','NT AUTHORITY\SYSTEM') -and -not $runAs.Contains('\')) { $runAs=[Environment]::MachineName+'\'+$runAs }
-                $minutes=[int](Read-Host 'Repeat interval in minutes')
+                $hostPath=Read-NSPScanBridgeTaskHost
+                if($null -eq $hostPath) { continue }
+                $runAs=Read-NSPScanBridgeRunAccount
+                if($null -eq $runAs) { continue }
+                $minutes=Read-NSPScanBridgeTaskInterval
+                if($null -eq $minutes) { continue }
                 $options=@{RunnerPath=$runner;ConfigurationPath=$ConfigurationPath;PowerShellPath=$hostPath;RunAs=$runAs;EveryMinutes=$minutes;SchedulingModulePath=$scheduling.Path}
                 $installer=Join-Path $script:ModuleRoot 'scripts/Install-ScanBridgeScheduledTask.ps1'
                 if($choice -eq 'TaskApply' -and -not (Get-NSPDryRun)) {
