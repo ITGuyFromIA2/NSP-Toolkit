@@ -15,6 +15,9 @@ $env:NSP_NO_AUTOINSTALL = '1'
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+& (Join-Path $PSScriptRoot 'Test-SetupRouting.ps1')
+& (Join-Path $PSScriptRoot 'Test-AlertSetup.ps1')
+
 function Invoke-RepoPester {
     Import-Module Pester -MinimumVersion 5.5.0 -Force
     $cfg = New-PesterConfiguration

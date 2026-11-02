@@ -268,9 +268,9 @@ Describe 'Clear-NSPToolClientData' {
 }
 
 Describe 'Launcher' {
-    It 'lists the five tools' {
+    It 'lists the existing tools followed by local-account and ScanBridge setup' {
         $t = @(Get-NSPToolkitTool)
-        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient,MDE'
+        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient,MDE,LocalAccounts,ScanBridge'
         ($t | Where-Object Name -eq NPS).SecretFields | Should -Contain 'RADIUSSecret'
     }
 

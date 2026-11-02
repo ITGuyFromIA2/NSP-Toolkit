@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add LocalAccounts and ScanBridge setup/diagnostic launcher entries, with plan-first task setup.
+- ScanBridge setup: **Configure dispatch alerting**. The recipient is a saved answer, the sender is
+  picked from a tenant search, and the alert app has no Graph permissions, sending only through
+  one-mailbox Exchange RBAC. The settings `Alerts` block is written in place with a backup.
+  Requires NSP.M365.Graph 0.1.2 with `Find-NSPGraphMailbox` and `Set-NSPGraphMailSendScope`.
+
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 

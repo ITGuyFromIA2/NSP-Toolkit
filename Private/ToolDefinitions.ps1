@@ -113,6 +113,24 @@ $script:NSPToolDefinitions = @(
             FixedPaths      = @()
         }
     }
+    [pscustomobject]@{
+        Name='LocalAccounts'; DisplayName='Local service accounts'
+        Description='Plan/create a local account; inspect or grant batch logon and resource access.'
+        ModuleName='NSP.Win.LocalAccount'; MinimumVersion='0.1.0'; EntryFunction='Start-NSPLocalAccountManager'
+        ShimFunction=$null; RequiresAdmin=$true
+        Detect={ $env:OS -eq 'Windows_NT' }; DetectHint='Windows local account provisioning'
+        SecretFields=@()
+        Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
+    }
+    [pscustomobject]@{
+        Name='ScanBridge'; DisplayName='ScanBridge setup and diagnostics'
+        Description='Inspect configuration health and dependencies, prepare the run account, and plan/register a task.'
+        ModuleName='NSP.Toolkit'; MinimumVersion='0.1.3'; EntryFunction='Start-NSPScanBridgeSetup'
+        ShimFunction=$null; RequiresAdmin=$true
+        Detect={ [bool](Get-Module -ListAvailable NSP.ScanBridge) }; DetectHint='ScanBridge installed'
+        SecretFields=@()
+        Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
+    }
 )
 
 function Get-NSPToolDefinition {

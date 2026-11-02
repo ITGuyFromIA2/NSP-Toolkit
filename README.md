@@ -60,3 +60,35 @@ its own server.
 ```powershell
 .\tools\Test-Repo.ps1      # PSScriptAnalyzer + Pester 5 under Windows PowerShell 5.1 and pwsh
 ```
+
+## ScanBridge and local service accounts
+
+`Start-NSPToolkit -Tool LocalAccounts` opens local-account preparation; passwords are prompted
+as SecureString and never saved as toolkit answers. `Start-NSPToolkit -Tool ScanBridge` opens
+the setup/health/task menu, using a supplied ScanBridge settings PSD1. Setup never hardcodes a
+computer, source folder or tenant. Account creation and task registration are separate explicit
+actions. No watcher code is extracted from ScanBridge. A diagnostic launcher is exposed when
+ScanBridge exports `Watch-NSPScanBridgeReadiness -ConfigurationPath`.
+The selected run account still needs the supported Graph/SDK dependencies and certificate,
+source, spool, archive and configuration access. A plan or registration is not a successful
+task-account authentication test. Existing held jobs must not be requeued to validate setup.
+
+**Configure dispatch alerting** fills the settings file's `Alerts` block without hand-typed
+client values:
+
+1. The dispatch recipient is asked once and saved as the ScanBridge Toolkit answer
+   `DispatchAddress`, then offered for every later client on that computer.
+2. An administrator signs in to the client tenant (Windows sign-in or device code). A sign-in to a
+   tenant other than the ingestion `Auth.TenantId` is refused.
+3. `Find-NSPGraphMailbox` searches the tenant (default term `scan`) and lists matches with a hint
+   such as "likely a shared mailbox"; an exact address can be typed instead.
+4. A dedicated alert app with **no** Graph permissions is planned, then created after confirmation,
+   with its certificate in the store of the account the task runs as.
+5. `Set-NSPGraphMailSendScope` plans, then applies, Exchange RBAC for Applications so the app can
+   send as that one mailbox only, and verifies the result with Exchange.
+6. The new `Alerts` block is previewed next to the current one and written with a timestamped
+   backup. Comments and other settings are left as they were. A test message is optional.
+
+Toolkit DRY RUN stops after the plans and changes nothing. Exchange can take up to two hours
+before sendMail honors a new scope. Graph accepting the test message does not prove that dispatch
+created a ticket.
