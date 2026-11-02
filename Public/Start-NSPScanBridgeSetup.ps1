@@ -10,7 +10,8 @@ function Start-NSPScanBridgeSetup {
     #>
     [CmdletBinding()]
     param([string]$ConfigurationPath)
-    Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.2
+    # 0.1.5: Read-NSPFolderPath (route Source picker).
+    Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.5
     while($true) {
         Write-NSPConsoleHeader -Title 'ScanBridge setup and diagnostics' -Subtitle ([Environment]::MachineName)
         $choices=@(

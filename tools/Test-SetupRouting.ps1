@@ -11,7 +11,7 @@ $script:ModuleRoot=$SourceRoot
 . (Join-Path $SourceRoot 'Public/Start-NSPToolkit.ps1')
 $state=@{Checks=0;Local=0;Scan=0;Imports=0;Health=0;Watch=0;Errors=0;Queue=@()}
 function Check($condition,$message) {if(-not $condition){throw $message};$state.Checks++}
-function Import-NSPToolkitModule { param($Name,$MinimumVersion) $state.Imports++ }
+function Import-NSPToolkitModule { param($Name,$MinimumVersion) $state.Imports++; if($Name -eq 'NSP.Console'){$state.ConsoleMinimum=[version]$MinimumVersion} }
 function Get-Module { param([switch]$ListAvailable,$Name) [pscustomobject]@{Version=[version]'9.0.0';Path='synthetic';ModuleBase=$SourceRoot;ExportedCommands=@{'Watch-NSPScanBridgeReadiness'=(Get-Command Watch-Synthetic)}} }
 function Watch-Synthetic {param($ConfigurationPath) $state.Watch++;Check ($ConfigurationPath -eq $state.Configuration) 'Diagnostic did not receive same PSD1.'}
 function Start-NSPLocalAccountManager {$state.Local++}
@@ -33,6 +33,9 @@ try {
     $state.Queue=@('Dependencies','Account','Health','Watch')
     Start-NSPScanBridgeSetup -ConfigurationPath $fixture | Out-Null
     Check ($state.Local -eq 2 -and $state.Health -eq 1 -and $state.Watch -eq 1 -and $state.Errors -eq 0) 'Setup menu dispatch failed.'
+    # Setup's NSP.Console minimum must cover the newest Console prompt it uses.
+    $setupText=(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'Private') -Filter 'ScanBridge*.ps1' | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
+    if($setupText -match 'Read-NSPFolderPath') { Check ($state.ConsoleMinimum -ge [version]'0.1.5') "Setup uses Read-NSPFolderPath (NSP.Console 0.1.5) but requires only $($state.ConsoleMinimum)." }
     $state.Queue=@('Health')
     Start-NSPScanBridgeSetup -ConfigurationPath ($fixture+'.missing') | Out-Null
     Check ($state.Errors -eq 1 -and $state.Health -eq 1) 'Missing configuration was not held.'
