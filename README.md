@@ -95,3 +95,21 @@ client values:
 Toolkit DRY RUN stops after the plans and changes nothing. Exchange can take up to two hours
 before sendMail honors a new scope. Graph accepting the test message does not prove that dispatch
 created a ticket.
+
+**Set up the Sysmon scan trigger** watches every route's Source folder for new PDFs. The Sysmon
+rules carry the name `NSP ScanBridge`, so the task's event trigger reacts to those events only,
+even when the rules are merged into a larger monitoring configuration. Setup refuses a Spool or
+Archive at or under a Source, because ScanBridge would then trigger itself.
+
+- No Sysmon: download it from Microsoft (kept only when the signature is valid and Microsoft
+  Corporation's) or use a folder you supply.
+- Sysmon running another configuration: **Keep** (the default) saves the ScanBridge rule group
+  next to the settings for a manual merge and changes nothing. **Replace** applies the ScanBridge
+  configuration after confirmation. Whatever the old configuration logged stops being logged.
+
+Then plan or register the task with **Sysmon events plus a sweep every 15 minutes**. The event
+trigger starts a pass at the largest route `MinimumAgeSeconds` + 30 s after a PDF is created. The
+sweep catches missed events, reboots and renames. Runs are queued, so passes never overlap on
+the worker lock. The task never receives the event's filename. A scan that takes longer to write
+than the delay is picked up by the next pass, never early, because readiness still needs the
+route age and an exclusive open.

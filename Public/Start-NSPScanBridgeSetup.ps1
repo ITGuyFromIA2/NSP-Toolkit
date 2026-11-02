@@ -19,8 +19,9 @@ function Start-NSPScanBridgeSetup {
             [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health'}
             [pscustomobject]@{Label='Configure dispatch alerting';Value='Alerts';Help='Pick the sender mailbox in the client tenant, create a scoped alert app and write the Alerts settings. Plans first.'}
             [pscustomobject]@{Label='Watch readiness decisions (diagnostic only)';Value='Watch'}
-            [pscustomobject]@{Label='Plan a periodic ScanBridge task';Value='TaskPlan'}
-            [pscustomobject]@{Label='Register a periodic ScanBridge task';Value='TaskApply'}
+            [pscustomobject]@{Label='Set up the Sysmon scan trigger';Value='Sysmon';Help='Sysmon watches the route Source folders for new PDFs so the task can start right after a scan. Plans first.'}
+            [pscustomobject]@{Label='Plan the ScanBridge task';Value='TaskPlan';Help='Shows what would be registered: account, PowerShell, Sysmon and/or periodic triggers. Changes nothing.'}
+            [pscustomobject]@{Label='Register the ScanBridge task';Value='TaskApply';Help='Registers the planned task; asks for the account password for Task Scheduler.'}
         )
         $choice=Read-NSPMenu -Choices $choices -Prompt 'Choose setup action' -CancelLabel 'Back'
         if($null -eq $choice) { return }
@@ -42,6 +43,7 @@ function Start-NSPScanBridgeSetup {
             if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file.' }
             $ConfigurationPath=(Get-Item -LiteralPath $ConfigurationPath).FullName
             if($choice -eq 'Alerts') { Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $ConfigurationPath; continue }
+            if($choice -eq 'Sysmon') { Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null; continue }
             Import-NSPToolkitModule -Name NSP.ScanBridge -MinimumVersion 0.1.0
             if($choice -eq 'Health') { Get-NSPScanBridgeHealth -ConfigurationPath $ConfigurationPath | Format-List; continue }
             if($choice -eq 'Watch') {
@@ -60,12 +62,13 @@ function Start-NSPScanBridgeSetup {
                 if($null -eq $hostPath) { continue }
                 $runAs=Read-NSPScanBridgeRunAccount
                 if($null -eq $runAs) { continue }
-                $minutes=Read-NSPScanBridgeTaskInterval
-                if($null -eq $minutes) { continue }
-                $options=@{RunnerPath=$runner;ConfigurationPath=$ConfigurationPath;PowerShellPath=$hostPath;RunAs=$runAs;EveryMinutes=$minutes;SchedulingModulePath=$scheduling.Path}
+                $when=Read-NSPScanBridgeTriggerMode -ConfigurationPath $ConfigurationPath
+                if($null -eq $when) { continue }
+                $options=@{RunnerPath=$runner;ConfigurationPath=$ConfigurationPath;PowerShellPath=$hostPath;RunAs=$runAs;EveryMinutes=$when.Minutes;SchedulingModulePath=$scheduling.Path}
+                if($when.Sysmon) { $options.SysmonTrigger=$true; $options.EventDelaySeconds=$when.DelaySeconds }
                 $installer=Join-Path $script:ModuleRoot 'scripts/Install-ScanBridgeScheduledTask.ps1'
                 if($choice -eq 'TaskApply' -and -not (Get-NSPDryRun)) {
-                    Write-NSPConsoleLine 'Registration enables future runs. Validate dependencies, certificate/private-key and folder access under this account first. This action does not configure Sysmon or parallel workers.' -Role Warning
+                    Write-NSPConsoleLine 'Registration enables future runs. Validate dependencies, certificate/private-key and folder access under this account first. A Sysmon trigger needs ''Set up the Sysmon scan trigger'' first; this action does not configure Sysmon or parallel workers.' -Role Warning
                     if($runAs -notin @('SYSTEM','NT AUTHORITY\SYSTEM') -and -not $runAs.EndsWith('$')) { $options.Credential=Get-Credential -UserName $runAs -Message 'Task Scheduler stores this credential; toolkit answers do not.' }
                     try { & $installer @options -Execute -Confirm | Format-List }
                     finally { $options.Remove('Credential') }

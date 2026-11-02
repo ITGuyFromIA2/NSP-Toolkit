@@ -10,6 +10,14 @@
 - ScanBridge setup: certificate option for a local service account (computer store plus key read
   for that account only). Pick lists replace the typed PowerShell host, run account (`.\name`
   accepted) and interval, and the settings path is remembered.
+- ScanBridge setup: **Set up the Sysmon scan trigger**. It watches the route Source folders for new
+  PDFs with rules named `NSP ScanBridge`, and refuses a Spool or Archive inside a Source. A missing
+  Sysmon can be downloaded from Microsoft (kept only when Microsoft-signed) or taken from a folder.
+  Another configuration is kept by default (the rule group is saved for a manual merge) or
+  replaced on request.
+- Task installer `-SysmonTrigger`: an event trigger for those named file creates, delayed by route
+  age + 30 s, alongside a 15-minute sweep on the same task. Runs are queued, never overlapping.
+  The event's filename is never passed to the task.
 
 All notable changes to NSP.Toolkit are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
