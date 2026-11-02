@@ -15,7 +15,11 @@
   drive; short generic names, with System and Worker reserved), rename one, change its readiness
   age, or remove one. After adding, each dependent step is offered in turn: folders and access,
   destination, site access, Sysmon update. Rename and remove are refused while the route has
-  files in Spool or PDFs in Source. The last route cannot be removed.
+  files in Spool or PDFs in Source. The last route cannot be removed. **Change Source folder**
+  (same refusal) moves a route, for example from a parent folder into a subfolder so sibling
+  routes can share that parent, and then offers the folder-access and Sysmon updates.
+- Settings backups use a millisecond stamp and a counter, so two saves in the same second no
+  longer collide.
 - **Grant the ingestion app access to route sites**: write for the configured app on every route's
   site, for routes added later. Already-granted sites are left alone.
 - Shared certificate-location and key-grant prompts for the alert and ingestion apps. The settings

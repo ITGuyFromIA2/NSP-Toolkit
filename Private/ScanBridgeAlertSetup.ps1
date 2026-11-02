@@ -73,7 +73,10 @@ function Set-NSPPsd1TopLevelEntry {
     if($errors.Count -or -not $check) { throw 'The updated settings would not parse; nothing was written.' }
     $result=[pscustomobject]@{Path=$Path;Key=$Key;OldText=$old;NewText=$valueText;BackupPath=$null;Written=$false}
     if($PSCmdlet.ShouldProcess($Path,"Update $Key")) {
-        $result.BackupPath='{0}.{1}.bak' -f $Path,[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
+        # Millisecond stamp plus a counter: two saves in the same moment must not collide.
+        $stamp=[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
+        $result.BackupPath='{0}.{1}.bak' -f $Path,$stamp
+        for($n=1;Test-Path -LiteralPath $result.BackupPath;$n++) { $result.BackupPath='{0}.{1}-{2}.bak' -f $Path,$stamp,$n }
         [IO.File]::Copy($Path,$result.BackupPath,$false)
         $temp=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
         try {

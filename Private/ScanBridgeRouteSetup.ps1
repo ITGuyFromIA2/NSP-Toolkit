@@ -337,7 +337,11 @@ function Invoke-NSPScanBridgeRouteManager {
         $archive=Read-NSPOptional -Prompt 'Archive folder' -Default (Join-Path $drive "ScanBridge\$name\Archive")
         $new=[ordered]@{Name=$name;Source=$source;Spool=$spool;Archive=$archive;DriveId='<drive-id>';FolderItemId='<folder-id>';MinimumAgeSeconds=20;VerifyRemoteAfterUpload=$false}
         $problem=Test-NSPScanBridgeRouteFolderRule -Routes (@($routes)+@($new))
-        if($problem) { Write-NSPConsoleLine $problem -Role Error; return }
+        if($problem) {
+            Write-NSPConsoleLine $problem -Role Error
+            Write-NSPConsoleLine 'Route folders may sit side by side (for example C:\ScanBase\FrontDesk and C:\ScanBase\ToEMR) but not inside each other. To nest routes under one parent, first move the existing route with Manage routes > that route > Change Source folder.' -Role Muted
+            return
+        }
         if(-not (Write-NSPScanBridgeSettingsEntry -ConfigurationPath $ConfigurationPath -Key Routes -Value (@($routes)+@($new)) -DryRun $dryRun)) { return }
         $steps=@(
             @{Prompt="Next: create '$name' folders and grant the task account access?";Run={ Invoke-NSPScanBridgeFolderSetup -ConfigurationPath $ConfigurationPath }}
@@ -356,11 +360,12 @@ function Invoke-NSPScanBridgeRouteManager {
     $age=if($route.MinimumAgeSeconds){$route.MinimumAgeSeconds}else{20}
     $action=Read-NSPMenu -Prompt "Route '$($route.Name)'" -CancelLabel 'Back' -Choices @(
         [pscustomobject]@{Label='Rename';Value='Rename';Help='Refused while the route has jobs: receipts are bound to the route name.'}
+        [pscustomobject]@{Label='Change Source folder';Value='Source';Help="Where the scanner saves for this route (now $($route.Source)). Refused while the route has jobs; Spool and Archive stay."}
         [pscustomobject]@{Label='Change readiness age';Value='Age';Help="Seconds a PDF must be unchanged before upload (now $age)."}
         [pscustomobject]@{Label='Remove';Value='Remove';Help='Refused while the route has jobs or waiting PDFs. Folders and SharePoint content are left as they are.'}
     )
     if($null -eq $action) { return }
-    if($action -in 'Rename','Remove') {
+    if($action -in 'Rename','Remove','Source') {
         $backlog=Get-NSPScanBridgeRouteBacklog -Route $route
         if($backlog.Busy) { Write-NSPConsoleLine ("Route '{0}' still has {1} file(s) in Spool and {2} PDF(s) waiting in Source. Let them finish (see 'Inspect ScanBridge configuration health') first." -f $route.Name,$backlog.Spool,$backlog.Source) -Role Error; return }
     }
@@ -371,6 +376,13 @@ function Invoke-NSPScanBridgeRouteManager {
             if($problem) { Write-NSPConsoleLine $problem -Role Warning }
         } while($problem)
         $route['Name']=$name
+    } elseif($action -eq 'Source') {
+        $folderArgs=@{Prompt="New Source folder for '$($route.Name)' (where the scanner saves)"}
+        if(-not $dryRun) { $folderArgs.Create=$true }
+        $route['Source']=Read-NSPFolderPath @folderArgs
+        $problem=Test-NSPScanBridgeRouteFolderRule -Routes $routes
+        if($problem) { Write-NSPConsoleLine $problem -Role Error; return }
+        Write-NSPConsoleLine 'Point the scanner at the new folder. Files left in the old Source are no longer collected.' -Role Warning
     } elseif($action -eq 'Age') {
         do { $typed=(Read-NSPNonEmpty -Prompt 'Readiness age in seconds (1-3600)').Trim() } until($typed -match '^\d{1,4}$' -and [int]$typed -ge 1 -and [int]$typed -le 3600)
         $route['MinimumAgeSeconds']=[int]$typed
@@ -379,7 +391,12 @@ function Invoke-NSPScanBridgeRouteManager {
         if($routes.Count -eq 1) { Write-NSPConsoleLine 'ScanBridge needs at least one route; add another before removing this one.' -Role Error; return }
         $routes=@($routes | Where-Object { $_.Name -ne $route.Name })
     }
-    if((Write-NSPScanBridgeSettingsEntry -ConfigurationPath $ConfigurationPath -Key Routes -Value $routes -DryRun $dryRun) -and $action -eq 'Remove' -and (Read-NSPConfirm -Prompt 'Update the Sysmon scan trigger to stop watching that Source?' -DefaultYes)) {
-        try { Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error }
+    if(-not (Write-NSPScanBridgeSettingsEntry -ConfigurationPath $ConfigurationPath -Key Routes -Value $routes -DryRun $dryRun)) { return }
+    $steps=@()
+    if($action -eq 'Source') { $steps+=@{Prompt='Next: grant the task account access to the new Source folder?';Run={ Invoke-NSPScanBridgeFolderSetup -ConfigurationPath $ConfigurationPath }} }
+    if($action -in 'Source','Remove') { $steps+=@{Prompt='Next: update the Sysmon scan trigger for the changed Source folders?';Run={ Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null }} }
+    foreach($step in $steps) {
+        if(-not (Read-NSPConfirm -Prompt $step.Prompt -DefaultYes)) { continue }
+        try { & $step.Run } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error }
     }
 }

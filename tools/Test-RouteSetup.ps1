@@ -230,6 +230,26 @@ try {
     Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
     $after=Import-PowerShellDataFile -LiteralPath $settings
     Check (@($after.Routes).Count -eq 1 -and $after.Routes[0].Name -eq 'RouteA' -and ($state.Chain -join ',') -eq 'Sysmon') 'Remove did not drop only that route and offer the Sysmon update.'
+    # The owner's case: one route at a parent folder, a second route wanted in a subfolder of it.
+    $nestRoot=Join-Path $root 'ScanBase'
+    $nested=New-Settings -RouteA "Source='$nestRoot'; Spool='$root\spoolA'; Archive='$root\archiveA'"
+    Reset-Manager; $state.Menu=@('Add'); $state.Typed=@('ToEMR'); $state.FolderPick="$nestRoot\ToEMR"
+    $before=[IO.File]::ReadAllText($nested)
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $nested
+    Check ($state.Errors.Count -eq 1 -and [IO.File]::ReadAllText($nested) -eq $before) 'A route inside another route''s Source was saved.'
+    Reset-Manager; $state.Menu=@(0,'Source'); $state.FolderPick="$nestRoot\Front"
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $nested
+    $after=Import-PowerShellDataFile -LiteralPath $nested
+    Check ($after.Routes[0].Source -eq "$nestRoot\Front" -and $after.Routes[0].Spool -eq "$root\spoolA" -and ($state.Chain -join ',') -eq 'Folders,Sysmon') 'Change Source did not move only the Source and offer folders and Sysmon.'
+    Reset-Manager; $state.Menu=@('Add'); $state.Typed=@('ToEMR'); $state.FolderPick="$nestRoot\ToEMR"
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $nested
+    Check ($state.Errors.Count -eq 0 -and @((Import-PowerShellDataFile -LiteralPath $nested).Routes | Where-Object Name -eq 'ToEMR').Count -eq 1) 'A sibling route under the same parent was not added after moving the first.'
+    New-Item -ItemType Directory -Path "$nestRoot\Front" -Force | Out-Null; [IO.File]::WriteAllText("$nestRoot\Front\scan.pdf",'%PDF')
+    Reset-Manager; $state.Menu=@(0,'Source'); $state.FolderPick="$nestRoot\Elsewhere"
+    $before=[IO.File]::ReadAllText($nested)
+    Invoke-NSPScanBridgeRouteManager -ConfigurationPath $nested
+    Check ($state.Errors.Count -eq 1 -and $state.Errors[0] -match '1 PDF\(s\) waiting' -and [IO.File]::ReadAllText($nested) -eq $before) 'Changing Source with waiting PDFs was not refused.'
+
     Reset-Manager; $state.Menu=@(0,'Age'); $state.Typed=@('0','45')
     $settings=New-Settings
     Invoke-NSPScanBridgeRouteManager -ConfigurationPath $settings
