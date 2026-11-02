@@ -14,12 +14,15 @@ function Start-NSPScanBridgeSetup {
     while($true) {
         Write-NSPConsoleHeader -Title 'ScanBridge setup and diagnostics' -Subtitle ([Environment]::MachineName)
         $choices=@(
-            [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies'}
+            [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies';Help='Lists installed versions of the modules setup and the task use.'}
             [pscustomobject]@{Label='Install PowerShell 7 and ScanBridge modules for all users';Value='Install';Help='What the task account needs: PowerShell 7, NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and the Graph SDK in both all-users module folders. Older Graph copies are replaced. Plans first.'}
-            [pscustomobject]@{Label='Prepare a local service account';Value='Account'}
-            [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health'}
+            [pscustomobject]@{Label='Prepare a local service account';Value='Account';Help='Create the non-admin account the task runs as, with the batch-logon right.'}
+            [pscustomobject]@{Label='Create route folders and grant the task account access';Value='Folders';Help='Source, Spool, Archive, lock and alert folders: created when missing, Modify for the task account, Read on the settings. Plans first.'}
+            [pscustomobject]@{Label='Pick the SharePoint destination for a route';Value='Destination';Help='Search sites (or paste a folder link), pick the library and folder; writes DriveId and FolderItemId. No IDs typed.'}
+            [pscustomobject]@{Label='Create the ingestion app and site access';Value='Ingest';Help='Dedicated app with Sites.Selected only, write on each route''s site, certificate for the task account; writes Auth. Plans first.'}
             [pscustomobject]@{Label='Configure dispatch alerting';Value='Alerts';Help='Pick the sender mailbox in the client tenant, create a scoped alert app and write the Alerts settings. Plans first.'}
-            [pscustomobject]@{Label='Watch readiness decisions (diagnostic only)';Value='Watch'}
+            [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health';Help='Route, receipt and queue health from the settings file. Read-only.'}
+            [pscustomobject]@{Label='Watch readiness decisions (diagnostic only)';Value='Watch';Help='Shows when files in the Source folders would be considered ready. Moves nothing.'}
             [pscustomobject]@{Label='Set up the Sysmon scan trigger';Value='Sysmon';Help='Sysmon watches the route Source folders for new PDFs so the task can start right after a scan. Plans first.'}
             [pscustomobject]@{Label='Plan the ScanBridge task';Value='TaskPlan';Help='Shows what would be registered: account, PowerShell, Sysmon and/or periodic triggers. Changes nothing.'}
             [pscustomobject]@{Label='Register the ScanBridge task';Value='TaskApply';Help='Registers the planned task; asks for the account password for Task Scheduler.'}
@@ -44,6 +47,9 @@ function Start-NSPScanBridgeSetup {
             if(-not $ConfigurationPath) { $ConfigurationPath=Read-NSPScanBridgeConfigurationPath }
             if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file.' }
             $ConfigurationPath=(Get-Item -LiteralPath $ConfigurationPath).FullName
+            if($choice -eq 'Folders') { Invoke-NSPScanBridgeFolderSetup -ConfigurationPath $ConfigurationPath; continue }
+            if($choice -eq 'Destination') { Invoke-NSPScanBridgeDestinationSetup -ConfigurationPath $ConfigurationPath; continue }
+            if($choice -eq 'Ingest') { Invoke-NSPScanBridgeIngestionSetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'Alerts') { Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'Sysmon') { Invoke-NSPScanBridgeSysmonSetup -ConfigurationPath $ConfigurationPath | Out-Null; continue }
             Import-NSPToolkitModule -Name NSP.ScanBridge -MinimumVersion 0.1.0

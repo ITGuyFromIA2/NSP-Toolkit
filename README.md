@@ -90,6 +90,24 @@ load. That is close to what a service account sees, but the task account's first
 real proof. The task plan then runs the all-users `NSP.ScanBridge\<version>\scripts\Run-ScanBridge.ps1`,
 and registration refuses until that exists.
 
+Three route steps fill in what the worker needs, in this order:
+
+1. **Create route folders and grant the task account access**. Source, Spool and Archive for
+   every route, plus the lock and alert-state folders, are created when missing. The task account
+   (entered as `.\name`) gets Modify on each and Read on the settings file. The setup refuses
+   overlapping folders and a Source and Spool on different drives, the same rules the worker
+   enforces.
+2. **Pick the SharePoint destination for a route**. Search sites by name, then pick the document
+   library and browse to the folder, or create one there; you can also paste a SharePoint folder
+   link. The route's `DriveId` and `FolderItemId` are written with a preview and backup, and only
+   that route changes.
+3. **Create the ingestion app and site access**. A dedicated app (default `NSP-ScanBridge-Ingest`)
+   gets the **Sites.Selected** permission only, which reaches no site until a site names it. Its
+   certificate goes where the task account can use it, as for alerting. Write access is then
+   granted on the site behind each route, and the settings' `Auth` block is written from the app
+   record. A sign-in to a tenant other than the one already in `Auth` is refused. Changing to a
+   different app holds existing receipts bound to the old one for review.
+
 **Configure dispatch alerting** fills the settings file's `Alerts` block without hand-typed
 client values:
 

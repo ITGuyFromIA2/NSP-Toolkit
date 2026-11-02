@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.6 (unreleased)
+
+- ScanBridge setup: **Pick the SharePoint destination for a route**. Search sites, or paste a
+  folder link, then pick the library and browse to (or create) the folder. DriveId and
+  FolderItemId are written into that route with a preview and backup, and no IDs are typed.
+- **Create the ingestion app and site access**: a dedicated app with Sites.Selected only, and a
+  certificate for the task account (computer store with key read, or a profile store). Write
+  access is granted on the site behind every route, then the settings' Auth block is written.
+- **Create route folders and grant the task account access**: creates Source/Spool/Archive and the
+  lock and alert folders when missing. Grants Modify on each and Read on the settings, after
+  ScanBridge's own folder rules: separate folders, and Source and Spool on one drive.
+- Shared certificate-location and key-grant prompts for the alert and ingestion apps. The settings
+  writer lays out lists of tables (Routes) one per block. The setup menu follows setup order.
+  Requires NSP.M365.Graph 0.1.3.
+
 ## 0.1.5 (2026-11-02)
 
 - ScanBridge setup: **Install PowerShell 7 and ScanBridge modules for all users**. It installs

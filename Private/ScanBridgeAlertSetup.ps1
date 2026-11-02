@@ -20,7 +20,14 @@ function ConvertTo-NSPPsd1Text {
         return '@{'+$NewLine+(@($lines) -join $NewLine)+$NewLine+($Indent*$Level)+'}'
     }
     if($Value -is [Collections.IEnumerable] -and $Value -isnot [string]) {
-        return '@('+((@($Value) | ForEach-Object { ConvertTo-NSPPsd1Text -Value $_ -Level $Level -Indent $Indent -NewLine $NewLine }) -join ', ')+')'
+        $items=@($Value)
+        if(@($items | Where-Object { $_ -is [Collections.IDictionary] }).Count) {
+            # A list of tables (such as Routes): one table per block, indented one level.
+            $inner=$Indent*($Level+1)
+            $blocks=foreach($item in $items) { $inner+(ConvertTo-NSPPsd1Text -Value $item -Level ($Level+1) -Indent $Indent -NewLine $NewLine) }
+            return '@('+$NewLine+(@($blocks) -join $NewLine)+$NewLine+($Indent*$Level)+')'
+        }
+        return '@('+(($items | ForEach-Object { ConvertTo-NSPPsd1Text -Value $_ -Level $Level -Indent $Indent -NewLine $NewLine }) -join ', ')+')'
     }
     "'"+(([string]$Value) -replace "'","''")+"'"
 }
@@ -32,7 +39,8 @@ function Set-NSPPsd1TopLevelEntry {
         previews. The original is kept as <file>.<UTC stamp>.bak before writing.
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$Key,[Parameter(Mandatory)][Collections.IDictionary]$Value)
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$Key,[Parameter(Mandatory)][object]$Value)
+    if($Value -isnot [Collections.IDictionary] -and -not ($Value -is [Collections.IEnumerable] -and $Value -isnot [string])) { throw 'A settings entry value must be a table or a list.' }
     $bytes=[IO.File]::ReadAllBytes($Path)
     $bom=$bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
     $text=[IO.File]::ReadAllText($Path)
@@ -79,6 +87,49 @@ function Set-NSPPsd1TopLevelEntry {
 
 function Test-NSPScanBridgeElevated {
     ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Read-NSPScanBridgeCertificateTarget {
+    # Where an app certificate lives: a local service account (computer store; key read granted
+    # later), this account's store, or the computer store for SYSTEM. Returns @{Store;ServiceAccount}
+    # or $null when the operator backs out or the choice cannot work here.
+    param([Parameter(Mandatory)][string]$Purpose,[Parameter(Mandatory)][Collections.IDictionary]$Answers,[bool]$DryRun)
+    $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $store=Read-NSPMenu -Prompt "Where should the $Purpose certificate live?" -CancelLabel 'Back' -Choices @(
+        [pscustomobject]@{Label='Service account (computer store, key readable by that account only)';Value='ServiceAccount';Help='For a dedicated local ScanBridge account: certificate in Cert:\LocalMachine\My, read access to its private key granted to that one account. Needs an elevated session.'}
+        [pscustomobject]@{Label="This account's store (Cert:\CurrentUser\My, $identity)";Value='Cert:\CurrentUser\My';Help='Choose when the ScanBridge task runs as this account: run setup signed in as the service account.'}
+        [pscustomobject]@{Label='Computer store (Cert:\LocalMachine\My)';Value='Cert:\LocalMachine\My';Help='Choose when the task runs as SYSTEM. Needs an elevated session.'}
+    )
+    if($null -eq $store) { return $null }
+    $serviceAccount=$null
+    if($store -eq 'ServiceAccount') {
+        Import-NSPToolkitModule -Name NSP.Win.LocalAccount -MinimumVersion 0.1.0
+        $typed=Read-NSPNonEmpty -Prompt 'Local account the ScanBridge task runs as (.\name)' -CurrentValue $(if($Answers.ServiceAccount){'.\'+[string]$Answers.ServiceAccount}else{''})
+        $serviceAccount=ConvertTo-NSPLocalAccountName -Account $typed
+        if(-not $serviceAccount) { Write-NSPConsoleLine "'$typed' is not a local account name on this computer (use .\name)." -Role Error; return $null }
+        $found=try { Get-NSPLocalServiceAccount -Name $serviceAccount } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error; return $null }
+        if(-not $found) {
+            if(-not $DryRun) { Write-NSPConsoleLine "Local account '$serviceAccount' does not exist. Create it with 'Prepare a local service account' first." -Role Error; return $null }
+            Write-NSPConsoleLine "Local account '$serviceAccount' does not exist yet; create it before the real run." -Role Warning
+        }
+        $store='Cert:\LocalMachine\My'
+    }
+    if($store -like 'Cert:\LocalMachine\*' -and -not (Test-NSPScanBridgeElevated)) { Write-NSPConsoleLine 'The computer certificate store needs an elevated session. Restart PowerShell as administrator.' -Role Error; return $null }
+    @{Store=$store;ServiceAccount=$serviceAccount}
+}
+
+function Grant-NSPScanBridgeCertificateKey {
+    # Plans, then on confirm grants, read access to an app certificate's private key for one local
+    # service account, and remembers that account as the ScanBridge default.
+    param([Parameter(Mandatory)][string]$ServiceAccount,[Parameter(Mandatory)][string]$Thumbprint,[Parameter(Mandatory)][string]$Purpose,[Parameter(Mandatory)][Collections.IDictionary]$Answers,[bool]$DryRun)
+    $grant=Grant-NSPLocalAccountCertificateAccess -Name $ServiceAccount -Thumbprint $Thumbprint
+    Write-NSPConsoleLine ("Key access plan: {0} read on {1}." -f $grant.Rights,$grant.Account)
+    if(-not $DryRun -and (Read-NSPConfirm -Prompt "Give $($grant.Account) read access to the $Purpose certificate's private key?" -DefaultYes)) {
+        $grant=Grant-NSPLocalAccountCertificateAccess -Name $ServiceAccount -Thumbprint $Thumbprint -Execute -Confirm:$false
+    }
+    if($grant.Status -eq 'Granted') { Write-NSPConsoleLine "Granted. A renewed certificate has a new key: re-run this setup after renewal to grant it again." -Role Success }
+    else { Write-NSPConsoleLine "Key access not granted; $ServiceAccount cannot sign in as the $Purpose app yet." -Role Warning }
+    if(-not $DryRun -and $ServiceAccount -ne $Answers.ServiceAccount) { $Answers.ServiceAccount=$ServiceAccount; Save-NSPToolAnswers -Tool ScanBridge -Answers $Answers -Confirm:$false }
 }
 
 function Test-NSPPlaceholderValue {
@@ -176,26 +227,9 @@ function Invoke-NSPScanBridgeAlertSetup {
     $appName=Read-NSPOptional -Prompt 'Alert app name' -Default $(if($answers.AlertAppName){[string]$answers.AlertAppName}else{'NSP-ScanBridge-Alerts'})
     $recordDirectory=Read-NSPOptional -Prompt 'Folder for the alert app record (client ID and thumbprint, never a key)' -Default (Join-Path (Split-Path -Parent $ConfigurationPath) 'AlertApp')
     $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $store=Read-NSPMenu -Prompt 'Where should the alert certificate live?' -CancelLabel 'Back' -Choices @(
-        [pscustomobject]@{Label='Service account (computer store, key readable by that account only)';Value='ServiceAccount';Help='For a dedicated local ScanBridge account: certificate in Cert:\LocalMachine\My, read access to its private key granted to that one account. Needs an elevated session.'}
-        [pscustomobject]@{Label="This account's store (Cert:\CurrentUser\My, $identity)";Value='Cert:\CurrentUser\My';Help='Choose when the ScanBridge task runs as this account: run setup signed in as the service account.'}
-        [pscustomobject]@{Label='Computer store (Cert:\LocalMachine\My)';Value='Cert:\LocalMachine\My';Help='Choose when the task runs as SYSTEM. Needs an elevated session.'}
-    )
-    if($null -eq $store) { return }
-    $serviceAccount=$null
-    if($store -eq 'ServiceAccount') {
-        Import-NSPToolkitModule -Name NSP.Win.LocalAccount -MinimumVersion 0.1.0
-        $typed=Read-NSPNonEmpty -Prompt 'Local account the ScanBridge task runs as (.\name)' -CurrentValue $(if($answers.ServiceAccount){'.\'+[string]$answers.ServiceAccount}else{''})
-        $serviceAccount=ConvertTo-NSPLocalAccountName -Account $typed
-        if(-not $serviceAccount) { Write-NSPConsoleLine "'$typed' is not a local account name on this computer (use .\name)." -Role Error; return }
-        $found=try { Get-NSPLocalServiceAccount -Name $serviceAccount } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error; return }
-        if(-not $found) {
-            if(-not $dryRun) { Write-NSPConsoleLine "Local account '$serviceAccount' does not exist. Create it with 'Prepare a local service account' first." -Role Error; return }
-            Write-NSPConsoleLine "Local account '$serviceAccount' does not exist yet; create it before the real run." -Role Warning
-        }
-        $store='Cert:\LocalMachine\My'
-    }
-    if($store -like 'Cert:\LocalMachine\*' -and -not (Test-NSPScanBridgeElevated)) { Write-NSPConsoleLine 'The computer certificate store needs an elevated session. Restart PowerShell as administrator.' -Role Error; return }
+    $target=Read-NSPScanBridgeCertificateTarget -Purpose 'alert' -Answers $answers -DryRun $dryRun
+    if($null -eq $target) { return }
+    $store=$target.Store; $serviceAccount=$target.ServiceAccount
     $register=@{AppName=$appName;ApplicationPermissions=@();RecordDirectory=$recordDirectory;CertificateStore=$store;TenantId=$context.TenantId}
     $app=Register-NSPGraphAppOnlyRegistration @register
     if($app.Status -eq 'ExistingUnrecorded') { Write-NSPConsoleLine $app.Message -Role Error; return }
@@ -208,16 +242,7 @@ function Invoke-NSPScanBridgeAlertSetup {
     }
     $record=Get-Content -LiteralPath $app.RecordPath -Raw | ConvertFrom-Json
     if(-not $dryRun -and $appName -ne $answers.AlertAppName) { $answers.AlertAppName=$appName; Save-NSPToolAnswers -Tool ScanBridge -Answers $answers -Confirm:$false }
-    if($serviceAccount) {
-        $grant=Grant-NSPLocalAccountCertificateAccess -Name $serviceAccount -Thumbprint $record.CertificateThumbprint
-        Write-NSPConsoleLine ("Key access plan: {0} read on {1}." -f $grant.Rights,$grant.Account)
-        if(-not $dryRun -and (Read-NSPConfirm -Prompt "Give $($grant.Account) read access to the alert certificate's private key?" -DefaultYes)) {
-            $grant=Grant-NSPLocalAccountCertificateAccess -Name $serviceAccount -Thumbprint $record.CertificateThumbprint -Execute -Confirm:$false
-        }
-        if($grant.Status -eq 'Granted') { Write-NSPConsoleLine "Granted. A renewed certificate has a new key: re-run this setup after renewal to grant it again." -Role Success }
-        else { Write-NSPConsoleLine "Key access not granted; $serviceAccount cannot sign in as the alert app yet." -Role Warning }
-        if(-not $dryRun -and $serviceAccount -ne $answers.ServiceAccount) { $answers.ServiceAccount=$serviceAccount; Save-NSPToolAnswers -Tool ScanBridge -Answers $answers -Confirm:$false }
-    }
+    if($serviceAccount) { Grant-NSPScanBridgeCertificateKey -ServiceAccount $serviceAccount -Thumbprint $record.CertificateThumbprint -Purpose 'alert' -Answers $answers -DryRun $dryRun }
 
     # 5. Exchange RBAC for Applications: Mail.Send as this sender only.
     Write-NSPConsoleLine 'Exchange Online sign-in follows (an Exchange administrator is needed to scope the app).' -Role Muted
