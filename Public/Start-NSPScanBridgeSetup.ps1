@@ -14,6 +14,11 @@ function Start-NSPScanBridgeSetup {
     Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.5
     while($true) {
         Write-NSPConsoleHeader -Title 'ScanBridge setup and diagnostics' -Subtitle ([Environment]::MachineName)
+        # Status above the menu, re-read on every redraw; the saved settings path is used silently when it exists.
+        try {
+            $statusPath=if($ConfigurationPath){$ConfigurationPath}else{[string](Get-NSPScanBridgeAnswerTable).ConfigurationPath}
+            Show-NSPScanBridgeSetupStatus -Status (Get-NSPScanBridgeSetupStatus -ConfigurationPath $statusPath)
+        } catch { Write-NSPConsoleLine "Status not available ($(Get-NSPSetupStatusReason $_))." -Role Warning }
         $choices=@(
             [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies';Help='Lists installed versions of the modules setup and the task use.'}
             [pscustomobject]@{Label='Install PowerShell 7 and ScanBridge modules for all users';Value='Install';Help='What the task account needs: PowerShell 7, NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and the Graph SDK in both all-users module folders. Older Graph copies are replaced. Plans first.'}
@@ -29,9 +34,11 @@ function Start-NSPScanBridgeSetup {
             [pscustomobject]@{Label='Set up the Sysmon scan trigger';Value='Sysmon';Help='Sysmon watches the route Source folders for new PDFs so the task can start right after a scan. Plans first.'}
             [pscustomobject]@{Label='Plan the ScanBridge task';Value='TaskPlan';Help='Shows what would be registered: account, PowerShell, Sysmon and/or periodic triggers. Changes nothing.'}
             [pscustomobject]@{Label='Register the ScanBridge task';Value='TaskApply';Help='Registers the planned task; asks for the account password for Task Scheduler.'}
+            [pscustomobject]@{Key='R';Label='Refresh status';Value='Refresh';Help='Reads the status above again. Changes nothing.'}
         )
         $choice=Read-NSPMenu -Choices $choices -Prompt 'Choose setup action' -CancelLabel 'Back'
         if($null -eq $choice) { return }
+        if($choice -eq 'Refresh') { continue }
         try {
             if($choice -eq 'Dependencies') {
                 foreach($name in 'NSP.ScanBridge','NSP.M365.Graph','Microsoft.Graph.Authentication','NSP.Win.LocalAccount','NSP.Win.ScheduledTask','NSP.Win.Sysmon','NSP.Win.RunAs') {

@@ -25,14 +25,18 @@ Check ((Get-NSPToolDefinition LocalAccounts).ModuleName -eq 'NSP.Win.LocalAccoun
 function Write-NSPConsoleHeader {param($Title,$Subtitle)}
 function Write-NSPConsoleLine {param($Text,$Role)if($Role -eq 'Error'){$state.Errors++}}
 function Read-NSPMenu {param($Choices,$Prompt,$CancelLabel) if($state.Queue.Count){$item=$state.Queue[0];$state.Queue=@($state.Queue|Select-Object -Skip 1);return $item};return $null}
+function Get-NSPScanBridgeAnswerTable {@{}}
+function Get-NSPScanBridgeSetupStatus {param($ConfigurationPath) $state.Status++;[pscustomobject]@{Lines=@();Ready=$false;Reason='synthetic'}}
+function Show-NSPScanBridgeSetupStatus {param($Status)}
 function Get-NSPScanBridgeHealth {param($ConfigurationPath) $state.Health++;Check ($ConfigurationPath -eq $state.Configuration) 'Health did not receive same PSD1.'}
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('nsp-toolkit-helper-'+[guid]::NewGuid().ToString('N')+'.psd1')
 [IO.File]::WriteAllText($fixture,'@{Routes=@()}')
 try {
     $state.Configuration=$fixture
-    $state.Queue=@('Dependencies','Account','Health','Watch')
+    $state.Queue=@('Dependencies','Account','Refresh','Health','Watch')
     Start-NSPScanBridgeSetup -ConfigurationPath $fixture | Out-Null
     Check ($state.Local -eq 2 -and $state.Health -eq 1 -and $state.Watch -eq 1 -and $state.Errors -eq 0) 'Setup menu dispatch failed.'
+    Check ($state.Status -eq 6) 'Status was not re-read before every menu.'
     # Setup's NSP.Console minimum must cover the newest Console prompt it uses.
     $setupText=(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'Private') -Filter 'ScanBridge*.ps1' | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
     if($setupText -match 'Read-NSPFolderPath') { Check ($state.ConsoleMinimum -ge [version]'0.1.5') "Setup uses Read-NSPFolderPath (NSP.Console 0.1.5) but requires only $($state.ConsoleMinimum)." }

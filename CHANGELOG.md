@@ -2,6 +2,15 @@
 
 ## 0.1.6 (unreleased)
 
+- ScanBridge setup: **status dashboard** above the menu, re-read on every redraw (and **Refresh
+  status**). Helpers in both all-users folders, PowerShell 7, the service account and its
+  batch-logon right, each route's folders, destination and queue counts, the ingestion and alert
+  certificates (days left, task-account key read), Sysmon rule coverage and the scheduled task.
+  It ends with "Ready for unattended runs: Yes/No - first blocking reason". Uses the saved
+  settings path silently when that file exists. Names and states only, with no IDs, thumbprints,
+  addresses or paths, so a screenshot is safe to share. A read that fails shows Unknown, never
+  No, and blocks Ready. No sign-in, receipt validation or PDF hashing happens; the Health item
+  keeps those checks.
 - ScanBridge setup: **Pick the SharePoint destination for a route**. Search sites, or paste a
   folder link, then pick the library and browse to (or create) the folder. DriveId and
   FolderItemId are written into that route with a preview and backup, and no IDs are typed.
