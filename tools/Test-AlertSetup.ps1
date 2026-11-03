@@ -70,7 +70,7 @@ try {
     function Get-NSPDryRun { $state.DryRun }
     function Get-NSPToolAnswers { param($Tool) $state.Answers }
     function Save-NSPToolAnswers { [CmdletBinding(SupportsShouldProcess)] param($Tool,$Answers) $state.Saved+=,([pscustomobject]$Answers) }
-    function Write-NSPConsoleLine { param($Text,$Role) if($Role -eq 'Error'){$state.Errors+=,$Text} }
+    function Write-NSPConsoleLine { param($Text,$Role) if($Role -eq 'Error'){$state.Errors+=,$Text}; if($Role -eq 'Warning'){$state.Warnings+=,$Text} }
     function Write-Host { param($Object) }
     function Read-NSPNonEmpty {
         param($Prompt,$CurrentValue)
@@ -115,7 +115,7 @@ try {
         [pscustomobject]@{Status='Scoped';Verified=$true;PrimarySmtpAddress='scanner@contoso.example';Message='ok'}
     }
     function Connect-NSPGraphAppOnly { param($ClientId,$TenantId,$CertificateThumbprint,$ContextScope) $state.AppOnly=$ContextScope }
-    function Send-NSPGraphMail { param($From,$To,$Subject,$Body) $state.Mail+=,[pscustomobject]@{From=$From;To=@($To)} }
+    function Send-NSPGraphMail { param($From,$To,$Subject,$Body) if($state.MailError){throw $state.MailError}; $state.Mail+=,[pscustomobject]@{From=$From;To=@($To)} }
     function Reset-Flow {
         param([switch]$DryRun)
         $config=Join-Path $root ('flow-'+[guid]::NewGuid().ToString('N')+'.psd1')
@@ -123,7 +123,7 @@ try {
         $state.Config=$config; $state.DryRun=[bool]$DryRun; $state.Tenant=$tenant
         $state.Answers=[pscustomobject]@{DispatchAddress='dispatch@contoso.example';Other='kept'}
         $state.Saved=@(); $state.Errors=@(); $state.Confirms=@(); $state.Menus=@(); $state.Searches=@()
-        $state.Register=@(); $state.Scope=@(); $state.Mail=@(); $state.AppOnly=$null
+        $state.Register=@(); $state.Scope=@(); $state.Mail=@(); $state.AppOnly=$null; $state.Warnings=@(); $state.MailError=$null
         $state.Typed=@(); $state.Grants=@(); $state.Elevated=$true
         # Sign-in, sender (first result), certificate store, enable alerting.
         $state.Menu=@('Broker',0,'Cert:\CurrentUser\My',$true)
@@ -143,6 +143,14 @@ try {
     Check ($state.Saved.Count -eq 1 -and $state.Saved[0].AlertAppName -eq 'NSP-ScanBridge-Alerts' -and $state.Saved[0].DispatchAddress -eq 'dispatch@contoso.example' -and $state.Saved[0].Other -eq 'kept') 'Saved answers were not merged.'
     Check ($state.Mail.Count -eq 1 -and $state.Mail[0].From -eq 'scanner@contoso.example' -and $state.Mail[0].To[0] -eq 'dispatch@contoso.example' -and $state.AppOnly -eq 'Process') 'Test message did not use the alert app in Process scope.'
     Check (@(Get-ChildItem -LiteralPath $root -Filter ((Split-Path -Leaf $state.Config)+'.*.bak')).Count -eq 1) 'Flow did not keep a settings backup.'
+
+    # Test-message failures: an unreadable key points at elevation; anything else at the scope delay.
+    Reset-Flow; $state.MailError='Keyset does not exist'
+    Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config
+    Check ($state.Errors.Count -eq 1 -and @($state.Warnings -match 'elevated console').Count -eq 1 -and @($state.Warnings -match 'two hours').Count -eq 0) 'A key read failure did not point to an elevated console.'
+    Reset-Flow; $state.MailError='Forbidden (403)'
+    Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config
+    Check ($state.Errors.Count -eq 1 -and @($state.Warnings -match 'two hours').Count -eq 1 -and @($state.Warnings -match 'elevated console').Count -eq 0) 'A send failure did not mention the scope delay.'
 
     Reset-Flow -DryRun
     Invoke-NSPScanBridgeAlertSetup -ConfigurationPath $state.Config

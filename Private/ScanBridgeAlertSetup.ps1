@@ -304,6 +304,8 @@ function Invoke-NSPScanBridgeAlertSetup {
         if($serviceAccount) { Write-NSPConsoleLine "This test ran as $identity; it does not prove $serviceAccount can read the key. The first scheduled alert run does." -Role Muted }
     } catch {
         Write-NSPConsoleLine "Test message failed: $($_.Exception.Message)" -Role Error
-        Write-NSPConsoleLine 'A new Exchange scope can take up to two hours to apply to sendMail. The certificate must be in this account''s chosen store.' -Role Warning
+        # NTE_BAD_KEYSET: a computer-store key is readable only by administrators and the task account.
+        if($_.Exception.Message -match 'Keyset does not exist|0x80090016') { Write-NSPConsoleLine 'This console cannot read the certificate''s private key. A computer-store key is readable only by administrators and the task account: send the test from an elevated console.' -Role Warning }
+        else { Write-NSPConsoleLine 'A new Exchange scope can take up to two hours to apply to sendMail. The certificate must be in this account''s chosen store.' -Role Warning }
     }
 }

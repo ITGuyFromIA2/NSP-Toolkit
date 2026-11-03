@@ -6,7 +6,8 @@ function Start-NSPScanBridgeSetup {
         Reuses the existing ScanBridge settings PSD1. No tenant operation runs on entry.
         Local-account provisioning, dispatch alerting, diagnostics and scheduled registration are
         separate actions.
-        The readiness watcher remains owned by ScanBridge and is offered when its API is present.
+        The readiness watcher and delivery discovery remain owned by ScanBridge and are offered
+        when their APIs are present.
     #>
     [CmdletBinding()]
     param([string]$ConfigurationPath)
@@ -31,6 +32,7 @@ function Start-NSPScanBridgeSetup {
             [pscustomobject]@{Label='Configure dispatch alerting';Value='Alerts';Help='Pick the sender mailbox in the client tenant, create a scoped alert app and write the Alerts settings. Plans first.'}
             [pscustomobject]@{Label='Inspect ScanBridge configuration health';Value='Health';Help='Route, receipt and queue health from the settings file. Read-only.'}
             [pscustomobject]@{Label='Watch readiness decisions (diagnostic only)';Value='Watch';Help='Shows when files in the Source folders would be considered ready. Moves nothing.'}
+            [pscustomobject]@{Label='Observe how a scanner delivers files';Value='Discover';Help='Watches test scans in a dedicated folder, classifies how the device writes and suggests a readiness age for a route. Moves nothing; any settings change plans first.'}
             [pscustomobject]@{Label='Set up the Sysmon scan trigger';Value='Sysmon';Help='Sysmon watches the route Source folders for new PDFs so the task can start right after a scan. Plans first.'}
             [pscustomobject]@{Label='Plan the ScanBridge task';Value='TaskPlan';Help='Shows what would be registered: account, PowerShell, Sysmon and/or periodic triggers. Changes nothing.'}
             [pscustomobject]@{Label='Register the ScanBridge task';Value='TaskApply';Help='Registers the planned task; asks for the account password for Task Scheduler.'}
@@ -73,6 +75,7 @@ function Start-NSPScanBridgeSetup {
                 & $watch -ConfigurationPath $ConfigurationPath
                 continue
             }
+            if($choice -eq 'Discover') { Invoke-NSPScanBridgeDiscoverySetup -ConfigurationPath $ConfigurationPath; continue }
             if($choice -in @('TaskPlan','TaskApply')) {
                 Import-NSPToolkitModule -Name NSP.Win.ScheduledTask -MinimumVersion 0.1.0
                 $installed=Resolve-NSPScanBridgeInstalledRunner

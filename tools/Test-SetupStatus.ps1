@@ -66,13 +66,25 @@ try {
     $s=Get-NSPScanBridgeSetupStatus -ConfigurationPath $settings
     Check ($s.Ready -and -not $s.Reason) "A healthy setup was not Ready: $($s.Reason)"
     Check ((& $line $s 'Helpers').Text -eq 'ScanBridge 0.1.0, Graph 0.1.3, SDK 2.40.0 (WinPS and PS7)') 'Matching editions were not combined.'
-    Check ((& $line $s 'ToFax').Text -eq 'folders OK, destination set, queue 1/0') "Route line was wrong: $((& $line $s 'ToFax').Text)"
+    Check ((& $line $s 'ToFax').Text -eq 'folders OK, destination set, queue 1/0, oldest unclaimed source 0 min' -and (& $line $s 'ToFax').Role -eq 'Success') "Route line was wrong: $((& $line $s 'ToFax').Text)"
     Check ((& $line $s 'Sysmon').Text -eq 'running, ScanBridge rule covers 1 of 1 Sources') "Sysmon line was wrong: $((& $line $s 'Sysmon').Text)"
     Check ((& $line $s 'Scheduled task').Text -match '^registered, Ready, last result 2 \(2026-11-02 14:03\), runs installed 0\.1\.0$') "Task line was wrong: $((& $line $s 'Scheduled task').Text)"
     Check (@($state.CertSids | Where-Object { $_ -ne 'S-1-5-21-1-2-3-1001' }).Count -eq 0) 'Key access was not checked for the task account SID.'
     Check ((& $line $s 'Mail').Role -eq 'Muted' -and (& $line $s 'Mail').Text -match 'not verified') 'Alert mail was implied to work.'
     $text=($s.Lines | ForEach-Object { "$($_.Label) $($_.Text) $($_.Blocker)" }) -join "`n"
     foreach($secret in $thumb,$alertThumb,$tenant,'example.com',$root,'Run-ScanBridge','scan.pdf') { Check ($text.IndexOf($secret,[StringComparison]::OrdinalIgnoreCase) -lt 0) "Status exposed an identifier or path: $secret" }
+
+    # Oldest unclaimed source: last write against NowUtc, Warning (never blocking) from 30 minutes; non-PDFs ignored.
+    $scan=Join-Path $dirs[0] 'scan.pdf'; $written=(Get-Item -LiteralPath $scan).LastWriteTimeUtc
+    Reset-Status
+    $s=Get-NSPScanBridgeSetupStatus -ConfigurationPath $settings -NowUtc $written.AddMinutes(45.5)
+    Check ((& $line $s 'ToFax').Text -match ', oldest unclaimed source 45 min$' -and (& $line $s 'ToFax').Role -eq 'Warning' -and $s.Ready) "An old source PDF was not a non-blocking Warning: $((& $line $s 'ToFax').Text)"
+    $s=Get-NSPScanBridgeSetupStatus -ConfigurationPath $settings -NowUtc $written.AddMinutes(29.9)
+    Check ((& $line $s 'ToFax').Text -match ' 29 min$' -and (& $line $s 'ToFax').Role -eq 'Success') 'A source PDF under 30 minutes was flagged.'
+    Move-Item -LiteralPath $scan -Destination ($scan+'.part')
+    $s=Get-NSPScanBridgeSetupStatus -ConfigurationPath $settings -NowUtc $written.AddMinutes(45.5)
+    Check ((& $line $s 'ToFax').Text -eq 'folders OK, destination set, queue 1/0' -and (& $line $s 'ToFax').Role -eq 'Success') "A non-PDF counted as an unclaimed source: $((& $line $s 'ToFax').Text)"
+    Move-Item -LiteralPath ($scan+'.part') -Destination $scan
 
     Reset-Status; $state.TaskState='Disabled'
     $s=Get-NSPScanBridgeSetupStatus -ConfigurationPath $settings

@@ -5,6 +5,7 @@
 
 $script:NSPScanBridgeTaskName='ScanBridge'
 $script:NSPScanBridgeTaskPath='\NSP\'
+$script:NSPScanBridgeSourceWarningMinutes=30
 
 function New-NSPSetupStatusLine {
     # Role: Success, Warning, Error or Muted (unknown / not applicable). Blocker: why unattended runs cannot work yet.
@@ -135,7 +136,7 @@ function Get-NSPScanBridgeSetupStatus {
         without a readable ConfigurationPath. Each read is bounded to local state: no sign-in, no
         receipt validation or PDF hashing (the Health menu item keeps that).
     #>
-    param([string]$ConfigurationPath)
+    param([string]$ConfigurationPath,[DateTime]$NowUtc=[DateTime]::UtcNow)
     $lines=[Collections.Generic.List[object]]::new()
     $add={ param($line) foreach($l in @($line)) { $lines.Add($l) } }
     $notSelected={ param($label) New-NSPSetupStatusLine -Label $label -Text 'settings not selected' -Role Muted -Blocker 'settings not selected' }
@@ -227,7 +228,17 @@ function Get-NSPScanBridgeSetupStatus {
                     $count={ param($kind) if($kind -in $missing){'?'}else{@(Get-ChildItem -LiteralPath ([string]$route[$kind]) -File -ErrorAction Stop).Count} }
                     $text=('{0}, {1}, queue {2}/{3}' -f $(if($missing.Count){"$($missing -join '/') missing"}else{'folders OK'}),$(if($destination){'destination set'}else{'NO destination'}),(& $count 'Source'),(& $count 'Spool'))
                     $blocker=if($missing.Count){"route $name folders missing"}elseif(-not $destination){"route $name has no destination"}else{$null}
-                    & $add (New-NSPSetupStatusLine -Label $name -Text $text -Role $(if($blocker){'Error'}else{'Success'}) -Blocker $blocker -Detail)
+                    $role=if($blocker){'Error'}else{'Success'}
+                    # Oldest unclaimed source PDF by last write, the worker's readiness clock (ScanBridge SourceAge, 30 min default).
+                    if('Source' -notin $missing) {
+                        $oldest=@(Get-ChildItem -LiteralPath ([string]$route.Source) -File -Filter '*.pdf' -ErrorAction Stop | Sort-Object LastWriteTimeUtc | Select-Object -First 1)
+                        if($oldest.Count) {
+                            $minutes=[int][math]::Max(0,[math]::Floor(($NowUtc-$oldest[0].LastWriteTimeUtc).TotalMinutes))
+                            $text+=", oldest unclaimed source $minutes min"
+                            if($minutes -ge $script:NSPScanBridgeSourceWarningMinutes -and $role -eq 'Success') { $role='Warning' }
+                        }
+                    }
+                    & $add (New-NSPSetupStatusLine -Label $name -Text $text -Role $role -Blocker $blocker -Detail)
                 } catch { & $add (New-NSPSetupUnknownLine -Label $name -Reason (Get-NSPSetupStatusReason $_) -Detail) }
             }
         }

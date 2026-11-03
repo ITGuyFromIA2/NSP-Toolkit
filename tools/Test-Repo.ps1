@@ -21,6 +21,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot 'Test-ModuleInstall.ps1')
 & (Join-Path $PSScriptRoot 'Test-RouteSetup.ps1')
 & (Join-Path $PSScriptRoot 'Test-SetupStatus.ps1')
+& (Join-Path $PSScriptRoot 'Test-DiscoverySetup.ps1')
 
 function Invoke-RepoPester {
     Import-Module Pester -MinimumVersion 5.5.0 -Force
