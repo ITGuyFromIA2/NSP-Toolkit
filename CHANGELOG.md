@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.7 (2026-11-03)
+
+- ScanBridge setup: **Observe how a scanner delivers files**. A guided run of ScanBridge's
+  read-only delivery discovery against a dedicated test folder, offered only when the installed
+  ScanBridge exports `Invoke-NSPScanBridgeDeliveryDiscovery`. A Spool or Archive is refused, and
+  so is a route Source unless the task is disabled. The suggested readiness age can be applied
+  to one route, plan first with a backup. Lowering it needs explicit confirmation and is never
+  offered for an Unknown or Hybrid result. A manual override is saved as a copy of the profile.
+  DRY RUN observes but creates and writes nothing.
+- ScanBridge setup status: each route shows "oldest unclaimed source N min", a Warning (not
+  blocking) from 30 minutes.
+- Dispatch alert setup: a test message that fails with "Keyset does not exist" now points to an
+  elevated console instead of the Exchange scope delay.
+
 ## 0.1.6 (2026-11-03)
 
 - ScanBridge setup: **status dashboard** above the menu, re-read on every redraw (and **Refresh
