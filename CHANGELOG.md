@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.6 (unreleased)
+## 0.1.6 (2026-11-03)
 
 - ScanBridge setup: **status dashboard** above the menu, re-read on every redraw (and **Refresh
   status**). Helpers in both all-users folders, PowerShell 7, the service account and its
