@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- ScanBridge setup: **Create the settings file**. On a new PC every settings-dependent step needed
+  a file nothing created. This step copies the highest all-users NSP.ScanBridge example, with
+  placeholders kept, and gives the file its own Administrators and SYSTEM only access, so a later
+  task-account grant on the folder does not reach it. A new folder gets the same access; an
+  existing one is left alone, with a warning if ordinary users can write to it. An existing file
+  is selected and never replaced. Plans first; DRY RUN creates nothing.
+- ScanBridge setup: **Register the ScanBridge task** can replace an existing task, which it used
+  to refuse after an upgrade. It shows the task against the plan, including the ScanBridge version,
+  triggers and a runner that no longer exists, confirms, saves the old definition beside the
+  settings file (Administrators and SYSTEM only), then replaces. A Disabled task stays Disabled. A
+  task in the middle of a pass is left alone. Planning shows the same comparison.
+- ScanBridge setup: settings backups keep the settings file's own access. They used to take the
+  folder's, which gave the task account Modify on backups of a restricted file.
+
 ## 0.1.7 (2026-11-03)
 
 - ScanBridge setup: **Observe how a scanner delivers files**. A guided run of ScanBridge's

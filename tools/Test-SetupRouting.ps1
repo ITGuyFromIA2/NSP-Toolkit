@@ -44,5 +44,41 @@ try {
     $state.Queue=@('Health')
     Start-NSPScanBridgeSetup -ConfigurationPath ($fixture+'.missing') | Out-Null
     Check ($state.Errors -eq 1 -and $state.Health -eq 1) 'Missing configuration was not held.'
+    # A new PC: the step that creates the file works with none, and later steps use what it selected.
+    function Invoke-NSPScanBridgeSettingsCreate {param($ConfigurationPath) $state.CreateGiven=$ConfigurationPath;$fixture}
+    function Read-NSPScanBridgeConfigurationPath {throw 'The created settings file was not selected.'}
+    $state.Queue=@('Settings','Health')
+    Start-NSPScanBridgeSetup | Out-Null
+    Check ($state.Errors -eq 1 -and $state.Health -eq 2 -and -not $state.CreateGiven) 'Create the settings file did not select the new file.'
+    # Task steps through the real installer's plan: an existing task is compared on every path,
+    # and only Apply outside DRY RUN registers.
+    $taskRoot=Join-Path ([IO.Path]::GetTempPath()) ('nsp-toolkit-routing-'+[guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $taskRoot | Out-Null
+    try {
+        $taskRunner=Join-Path $taskRoot 'Run-ScanBridge.ps1'; [IO.File]::WriteAllText($taskRunner,'# runner')
+        $taskSettings=Join-Path $taskRoot 'ScanBridge.psd1'; [IO.File]::WriteAllText($taskSettings,'@{}')
+        function Resolve-NSPScanBridgeInstalledRunner {[pscustomobject]@{Runner=$taskRunner;Version='0.1.1'}}
+        function Read-NSPScanBridgeTaskHost {(Get-Command powershell.exe).Source}
+        function Read-NSPScanBridgeRunAccount {'SYSTEM'}
+        function Read-NSPScanBridgeTriggerMode {param($ConfigurationPath) [pscustomobject]@{Minutes=15;Sysmon=$false}}
+        function Get-NSPDryRun {$state.DryRun}
+        function Get-NSPScanBridgeExistingTask {param($TaskName,$TaskPath) $state.Asked="$TaskPath$TaskName";$state.Existing}
+        function Get-NSPScanBridgeTaskComparison {param($Task,$Plan) "compared $($Plan.RunAs)"}
+        function Show-NSPScanBridgeTaskComparison {param($Comparison) $state.Shown++}
+        function Invoke-NSPScanBridgeTaskRegistration {param($Installer,$Options,$Plan,$Comparison,$ConfigurationPath) $state.Registered+=,[pscustomobject]@{Comparison=$Comparison;Runner=$Options.RunnerPath;Settings=$ConfigurationPath;Status=$Plan.Status}}
+        $state.Shown=0;$state.Registered=@();$state.DryRun=$false;$state.Existing='task';$state.Queue=@('TaskPlan')
+        Start-NSPScanBridgeSetup -ConfigurationPath $taskSettings | Out-Null
+        Check ($state.Errors -eq 1 -and $state.Shown -eq 1 -and $state.Registered.Count -eq 0 -and $state.Asked -eq '\NSP\ScanBridge') 'The task plan did not compare, or registered.'
+        $state.DryRun=$true;$state.Queue=@('TaskApply')
+        Start-NSPScanBridgeSetup -ConfigurationPath $taskSettings | Out-Null
+        Check ($state.Shown -eq 2 -and $state.Registered.Count -eq 0) 'DRY RUN registered.'
+        $state.DryRun=$false;$state.Queue=@('TaskApply')
+        Start-NSPScanBridgeSetup -ConfigurationPath $taskSettings | Out-Null
+        $sent=$state.Registered[0]
+        Check ($state.Errors -eq 1 -and $sent.Comparison -eq 'compared SYSTEM' -and $sent.Runner -eq $taskRunner -and $sent.Settings -eq $taskSettings -and $sent.Status -eq 'PlanOnly') 'Registration did not receive the plan and comparison.'
+        $state.Existing=$null;$state.Registered=@();$state.Shown=0;$state.Queue=@('TaskApply')
+        Start-NSPScanBridgeSetup -ConfigurationPath $taskSettings | Out-Null
+        Check ($state.Shown -eq 0 -and $state.Registered.Count -eq 1 -and $null -eq $state.Registered[0].Comparison) 'A first registration was treated as a replace.'
+    } finally {Remove-Item -LiteralPath $taskRoot -Recurse -Force -ErrorAction SilentlyContinue}
     Write-Host ('Passed: {0} toolkit helper routing checks in {1}; imports/menu/actions mocked.' -f $state.Checks,$PSVersionTable.PSVersion)
 } finally {[IO.File]::Delete($fixture)}

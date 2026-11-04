@@ -3,7 +3,8 @@ function Start-NSPScanBridgeSetup {
     .SYNOPSIS
         ScanBridge setup/health menu, also launched by Start-NSPToolkit -Tool ScanBridge.
     .DESCRIPTION
-        Reuses the existing ScanBridge settings PSD1. No tenant operation runs on entry.
+        Reuses the existing ScanBridge settings PSD1, or creates the first one from the installed
+        example. No tenant operation runs on entry.
         Local-account provisioning, dispatch alerting, diagnostics and scheduled registration are
         separate actions.
         The readiness watcher and delivery discovery remain owned by ScanBridge and are offered
@@ -24,6 +25,7 @@ function Start-NSPScanBridgeSetup {
             [pscustomobject]@{Label='Inspect helper availability';Value='Dependencies';Help='Lists installed versions of the modules setup and the task use.'}
             [pscustomobject]@{Label='Install PowerShell 7 and ScanBridge modules for all users';Value='Install';Help='What the task account needs: PowerShell 7, NSP.ScanBridge, NSP.M365.Graph 0.1.2+ and the Graph SDK in both all-users module folders. Older Graph copies are replaced. Plans first.'}
             [pscustomobject]@{Label='Prepare a local service account';Value='Account';Help='Create the non-admin account the task runs as, with the batch-logon right.'}
+            [pscustomobject]@{Label='Create the settings file';Value='Settings';Help='For a new PC: copies the installed example, placeholders kept, Administrators and SYSTEM only. Never replaces an existing file. Plans first.'}
             [pscustomobject]@{Label='Manage routes (add, rename, change age, remove)';Value='Routes';Help='Add a route (Source picked, Spool/Archive per route) and walk through its folders, destination, site access and Sysmon. Rename/remove refused while jobs exist.'}
             [pscustomobject]@{Label='Create route folders and grant the task account access';Value='Folders';Help='Source, Spool, Archive, lock and alert folders: created when missing, Modify for the task account, Read on the settings. Plans first.'}
             [pscustomobject]@{Label='Pick the SharePoint destination for a route';Value='Destination';Help='Search sites (or paste a folder link), pick the library and folder; writes DriveId and FolderItemId. No IDs typed.'}
@@ -56,8 +58,13 @@ function Start-NSPScanBridgeSetup {
                 Start-NSPLocalAccountManager
                 continue
             }
+            if($choice -eq 'Settings') {
+                $selected=Invoke-NSPScanBridgeSettingsCreate -ConfigurationPath $ConfigurationPath
+                if($selected) { $ConfigurationPath=$selected }
+                continue
+            }
             if(-not $ConfigurationPath) { $ConfigurationPath=Read-NSPScanBridgeConfigurationPath }
-            if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file.' }
+            if(-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) { throw 'Select an existing ScanBridge configuration file, or use ''Create the settings file'' first.' }
             $ConfigurationPath=(Get-Item -LiteralPath $ConfigurationPath).FullName
             if($choice -eq 'Routes') { Invoke-NSPScanBridgeRouteManager -ConfigurationPath $ConfigurationPath; continue }
             if($choice -eq 'SiteGrant') { Invoke-NSPScanBridgeSiteGrantSetup -ConfigurationPath $ConfigurationPath; continue }
@@ -96,12 +103,13 @@ function Start-NSPScanBridgeSetup {
                 $options=@{RunnerPath=$runner;ConfigurationPath=$ConfigurationPath;PowerShellPath=$hostPath;RunAs=$runAs;EveryMinutes=$when.Minutes;SchedulingModulePath=$scheduling.Path}
                 if($when.Sysmon) { $options.SysmonTrigger=$true; $options.EventDelaySeconds=$when.DelaySeconds }
                 $installer=Join-Path $script:ModuleRoot 'scripts/Install-ScanBridgeScheduledTask.ps1'
+                $plan=& $installer @options
+                $existing=Get-NSPScanBridgeExistingTask -TaskName $plan.TaskName -TaskPath $plan.TaskPath
+                $comparison=if($existing){Get-NSPScanBridgeTaskComparison -Task $existing -Plan $plan}
+                if($comparison) { Show-NSPScanBridgeTaskComparison -Comparison $comparison }
                 if($choice -eq 'TaskApply' -and -not (Get-NSPDryRun)) {
-                    Write-NSPConsoleLine 'Registration enables future runs. Validate dependencies, certificate/private-key and folder access under this account first. A Sysmon trigger needs ''Set up the Sysmon scan trigger'' first; this action does not configure Sysmon or parallel workers.' -Role Warning
-                    if($runAs -notin @('SYSTEM','NT AUTHORITY\SYSTEM') -and -not $runAs.EndsWith('$')) { $options.Credential=Get-Credential -UserName $runAs -Message 'Task Scheduler stores this credential; toolkit answers do not.' }
-                    try { & $installer @options -Execute -Confirm | Format-List }
-                    finally { $options.Remove('Credential') }
-                } else { & $installer @options | Format-List }
+                    Invoke-NSPScanBridgeTaskRegistration -Installer $installer -Options $options -Plan $plan -Comparison $comparison -ConfigurationPath $ConfigurationPath
+                } else { $plan | Format-List }
             }
         } catch { Write-NSPConsoleLine $_.Exception.Message -Role Error }
     }

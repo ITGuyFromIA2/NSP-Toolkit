@@ -90,6 +90,17 @@ load. That is close to what a service account sees, but the task account's first
 real proof. The task plan then runs the all-users `NSP.ScanBridge\<version>\scripts\Run-ScanBridge.ps1`,
 and registration refuses until that exists.
 
+**Create the settings file** makes the first settings file on a new PC, after the install step.
+It copies the example from the highest all-users NSP.ScanBridge to
+`C:\ProgramData\NSP\ScanBridge\ScanBridge.psd1` (or a path you choose), keeps the placeholders
+for the later steps to fill, and restricts the file to Administrators and SYSTEM. The folder step
+adds the task account's Read. An existing file is selected and never replaced.
+
+**Register the ScanBridge task** replaces an existing task after an upgrade, once you have seen it
+against the plan and confirmed. The old definition is saved beside the settings file as
+`ScanBridge.<UTC stamp>.task.xml`, and a Disabled task stays Disabled. To restore one, use
+`Register-ScheduledTask -Xml (Get-Content <file> -Raw) -TaskName ScanBridge -TaskPath \NSP\ -User <account> -Password <password>`.
+
 **Manage routes** lists the routes and adds, renames, re-times or removes one. A new route needs
 only a short generic name (it appears in dispatch tickets) and its Source folder. Spool and
 Archive are proposed as `<drive>\ScanBridge\<name>\Spool` and `\Archive` on the Source drive, and

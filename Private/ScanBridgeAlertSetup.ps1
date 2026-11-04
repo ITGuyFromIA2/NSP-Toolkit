@@ -77,7 +77,18 @@ function Set-NSPPsd1TopLevelEntry {
         $stamp=[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
         $result.BackupPath='{0}.{1}.bak' -f $Path,$stamp
         for($n=1;Test-Path -LiteralPath $result.BackupPath;$n++) { $result.BackupPath='{0}.{1}-{2}.bak' -f $Path,$stamp,$n }
-        [IO.File]::Copy($Path,$result.BackupPath,$false)
+        # A plain copy would take the folder's inherited access, which can be wider than the file's
+        # own: the task account has Modify on the settings folder. The access goes on before the content.
+        [IO.File]::Open($result.BackupPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None).Dispose()
+        try {
+            $access=New-Object Security.AccessControl.FileSecurity
+            $access.SetSecurityDescriptorSddlForm((Get-Acl -LiteralPath $Path).GetSecurityDescriptorSddlForm('Access'))
+            Set-Acl -LiteralPath $result.BackupPath -AclObject $access -ErrorAction Stop
+            [IO.File]::WriteAllBytes($result.BackupPath,$bytes)
+        } catch {
+            Remove-Item -LiteralPath $result.BackupPath -Force -ErrorAction SilentlyContinue
+            throw
+        }
         $temp=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
         try {
             [IO.File]::WriteAllText($temp,$updated,(New-Object Text.UTF8Encoding($bom)))
