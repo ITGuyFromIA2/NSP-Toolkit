@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 (2026-11-04)
 
 - ScanBridge setup: **Create the settings file**. On a new PC every settings-dependent step needed
   a file nothing created. This step copies the highest all-users NSP.ScanBridge example, with
