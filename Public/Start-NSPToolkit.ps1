@@ -10,7 +10,7 @@ function Start-NSPToolkit {
         Needs NSP.Console and NSP.Bootstrap; they are loaded on first use.
 
     .PARAMETER Tool
-        Start this tool directly (AD, NPS, PKI, FortiClient, MDE, LocalAccounts, ScanBridge).
+        Start this tool directly (AD, NPS, PKI, FortiClient, MDE, LocalAccounts, ScanBridge, UserPairing).
 
     .PARAMETER NoElevate
         Do not relaunch elevated.

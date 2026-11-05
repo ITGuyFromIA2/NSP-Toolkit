@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 (2026-11-05)
+
+- Add the UserPairing launcher and Start-NSPUserPairingSetup. Dependencies load from installed
+  modules or PSGallery, without sibling-checkout fallback: UserPairing 0.1.0, AD 0.1.12,
+  Graph 0.1.3 and Console 0.1.5. Accept verified source-anchor objects or exported JSON,
+  connect with Preflight read scopes and return the wizard run. WhatIf and DRY RUN do not
+  install, connect or collect. Existing wizard confirmations and write boundaries remain.
+
 ## 0.1.8 (2026-11-04)
 
 - ScanBridge setup: **Create the settings file**. On a new PC every settings-dependent step needed

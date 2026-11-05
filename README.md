@@ -168,3 +168,36 @@ sweep catches missed events, reboots and renames. Runs are queued, so passes nev
 the worker lock. The task never receives the event's filename. A scan that takes longer to write
 than the delay is picked up by the next pass, never early, because readiness still needs the
 route age and an exclusive open.
+
+## Entra / AD user pairing
+
+```powershell
+Start-NSPToolkit -Tool UserPairing
+```
+
+The entry loads NSP.M365.UserPairing 0.1.0+, NSP.ActiveDirectory 0.1.12+,
+NSP.M365.Graph 0.1.3+ and NSP.Console 0.1.5+ from installed modules or PSGallery.
+Missing or old dependencies install for AllUsers when elevated, otherwise CurrentUser.
+It never uses a sibling development checkout. NSP_NO_AUTOINSTALL=1 prevents installation.
+
+Select the verified source-anchor JSON exported on the sync server. To prepare that file
+on the sync server, after installing NSP.M365.UserPairing:
+
+```powershell
+Get-NSPEntraConnectSourceAnchor | ConvertTo-Json -Depth 30 |
+    Set-Content -LiteralPath 'C:\Admin\SourceAnchor.json' -Encoding UTF8
+```
+
+Keep this topology evidence outside Git. Alternatively, pass the diagnostic result directly:
+
+```powershell
+$run = Start-NSPUserPairingSetup -SourceAnchor $anchor
+# Or select a saved result explicitly:
+$run = Start-NSPUserPairingSetup -SourceAnchorPath 'C:\Admin\SourceAnchor.json'
+```
+
+Only a Verified diagnostic with a supported strategy proceeds to sign-in. The wizard displays
+the connected tenant/DC/forest before inventory and keeps suffix additions, address writes and
+hard-match writes behind their separate confirmations. The returned run retains the review,
+queue, inventory and preparation results. WhatIf and Toolkit DRY RUN do not install, connect
+or collect. The menu route prompts after elevation; no source-anchor object is lost on relaunch.

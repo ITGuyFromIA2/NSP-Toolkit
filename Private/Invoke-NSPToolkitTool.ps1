@@ -3,6 +3,11 @@ function Invoke-NSPToolkitTool {
     param([Parameter(Mandatory)][string]$Tool)
 
     $def = Get-NSPToolDefinition -Tool $Tool
+    # This Toolkit adapter owns its Gallery dependency loading and DRY RUN checks.
+    if ($def.PSObject.Properties['ToolkitEntry'] -and $def.ToolkitEntry) {
+        & $def.EntryFunction
+        return
+    }
     $ok = Get-Module -ListAvailable -Name $def.ModuleName | Where-Object { $_.Version -ge [version]$def.MinimumVersion }
     if (-not $ok) {
         # A checkout next to this repository counts too (development, -ModuleRoot style testing).

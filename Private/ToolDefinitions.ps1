@@ -123,6 +123,15 @@ $script:NSPToolDefinitions = @(
         Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
     }
     [pscustomobject]@{
+        Name='UserPairing'; DisplayName='Entra / AD user pairing'
+        Description='Load published dependencies, select verified source-anchor evidence and review user pairs.'
+        ModuleName='NSP.M365.UserPairing'; MinimumVersion='0.1.0'; EntryFunction='Start-NSPUserPairingSetup'
+        ToolkitEntry=$true; ShimFunction=$null; RequiresAdmin=$false
+        Detect={ $env:OS -eq 'Windows_NT' }; DetectHint='Entra and AD pairing review'
+        SecretFields=@()
+        Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
+    }
+    [pscustomobject]@{
         Name='ScanBridge'; DisplayName='ScanBridge setup and diagnostics'
         Description='Inspect configuration health and dependencies, prepare the run account, and plan/register a task.'
         ModuleName='NSP.Toolkit'; MinimumVersion='0.1.3'; EntryFunction='Start-NSPScanBridgeSetup'
