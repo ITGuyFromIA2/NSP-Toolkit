@@ -175,29 +175,38 @@ route age and an exclusive open.
 Start-NSPToolkit -Tool UserPairing
 ```
 
-The entry loads NSP.M365.UserPairing 0.1.0+, NSP.ActiveDirectory 0.1.12+,
+The entry loads NSP.M365.UserPairing 0.1.2+, NSP.ActiveDirectory 0.1.13+,
 NSP.M365.Graph 0.1.3+ and NSP.Console 0.1.5+ from installed modules or PSGallery.
 Missing or old dependencies install for AllUsers when elevated, otherwise CurrentUser.
 It never uses a sibling development checkout. NSP_NO_AUTOINSTALL=1 prevents installation.
 
-Select the verified source-anchor JSON exported on the sync server. To prepare that file
-on the sync server, after installing NSP.M365.UserPairing:
+Choose **Start review** to load prerequisites, collect source-anchor evidence and read users.
+It keeps Toolkit DRY RUN enabled and directory writes unavailable, while saving review choices
+in private local state. **Preview startup only** performs no installation or connections.
+Named pairing startup does not force elevation, and other relaunches preserve the selected mode.
+
+Startup tries this computer first. If this is not the sync server, enter the sync-server hostname
+and confirm a read through existing Windows PowerShell remoting, optionally with another credential.
+The remote server needs ADSync only; no NSP package install or remoting configuration runs there.
+Missing access returns to collection choices. A saved JSON is a fallback, not a prerequisite.
+To enter directly or choose a server up front:
 
 ```powershell
-Get-NSPEntraConnectSourceAnchor | ConvertTo-Json -Depth 30 |
-    Set-Content -LiteralPath 'C:\Admin\SourceAnchor.json' -Encoding UTF8
+Start-NSPUserPairingSetup -Review
+Start-NSPUserPairingSetup -Review -SyncServer sync01.example.test
 ```
 
 Keep this topology evidence outside Git. Alternatively, pass the diagnostic result directly:
 
 ```powershell
-$run = Start-NSPUserPairingSetup -SourceAnchor $anchor
+$run = Start-NSPUserPairingSetup -Review -SourceAnchor $anchor
 # Or select a saved result explicitly:
-$run = Start-NSPUserPairingSetup -SourceAnchorPath 'C:\Admin\SourceAnchor.json'
+$run = Start-NSPUserPairingSetup -Review -SourceAnchorPath 'C:\Admin\SourceAnchor.json'
 ```
 
 Only a Verified diagnostic with a supported strategy proceeds to sign-in. The wizard displays
 the connected tenant/DC/forest before inventory and keeps suffix additions, address writes and
 hard-match writes behind their separate confirmations. The returned run retains the review,
-queue, inventory and preparation results. WhatIf and Toolkit DRY RUN do not install, connect
-or collect. The menu route prompts after elevation; no source-anchor object is lost on relaunch.
+queue, inventory and preparation results. Explicit WhatIf and startup preview do not install,
+connect or collect. Direct setup without Review still respects Toolkit DRY RUN. Review exposes
+no directory-write action; applying AD plans and hard matches remains a separate explicit step.

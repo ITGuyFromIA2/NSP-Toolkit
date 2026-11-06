@@ -5,6 +5,15 @@ function Invoke-NSPToolkitTool {
     $def = Get-NSPToolDefinition -Tool $Tool
     # This Toolkit adapter owns its Gallery dependency loading and DRY RUN checks.
     if ($def.PSObject.Properties['ToolkitEntry'] -and $def.ToolkitEntry) {
+        if ($Tool -eq 'UserPairing' -and (Get-NSPDryRun)) {
+            $mode = Read-NSPMenu -Prompt 'Pairing startup mode' -Choices @(
+                [pscustomobject]@{ Label = 'Start review: load prerequisites, read sync rules and users; no directory writes'; Value = 'review' }
+                [pscustomobject]@{ Label = 'Preview startup only: no installation or connections'; Value = 'preview' }
+            ) -CancelLabel 'Back'
+            if ($null -eq $mode) { return }
+            if ($mode -eq 'review') { Start-NSPUserPairingSetup -Review; return }
+            if ($mode -ne 'preview') { throw 'Choose one of the displayed startup modes.' }
+        }
         & $def.EntryFunction
         return
     }

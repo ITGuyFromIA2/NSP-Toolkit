@@ -125,7 +125,7 @@ $script:NSPToolDefinitions = @(
     [pscustomobject]@{
         Name='UserPairing'; DisplayName='Entra / AD user pairing'
         Description='Load published dependencies, select verified source-anchor evidence and review user pairs.'
-        ModuleName='NSP.M365.UserPairing'; MinimumVersion='0.1.0'; EntryFunction='Start-NSPUserPairingSetup'
+        ModuleName='NSP.M365.UserPairing'; MinimumVersion='0.1.2'; EntryFunction='Start-NSPUserPairingSetup'
         ToolkitEntry=$true; ShimFunction=$null; RequiresAdmin=$false
         Detect={ $env:OS -eq 'Windows_NT' }; DetectHint='Entra and AD pairing review'
         SecretFields=@()

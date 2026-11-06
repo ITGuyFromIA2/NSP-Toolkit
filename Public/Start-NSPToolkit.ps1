@@ -5,7 +5,8 @@ function Start-NSPToolkit {
         from the PowerShell Gallery if needed, then starts it.
 
     .DESCRIPTION
-        Relaunches elevated first (the tools change AD, NPS and the CA). Tools that apply to this
+        Relaunches elevated first, except named UserPairing discovery, and preserves DRY RUN.
+        Tools that apply to this
         machine - NPS on an NPS server, PKI on a CA - are marked. -Tool skips the menu.
         Needs NSP.Console and NSP.Bootstrap; they are loaded on first use.
 
@@ -30,10 +31,11 @@ function Start-NSPToolkit {
     Import-NSPToolkitModule -Name NSP.Bootstrap -MinimumVersion 0.1.3
     Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.2
 
-    if (-not $NoElevate) {
+    if (-not $NoElevate -and $Tool -ne 'UserPairing') {
         # By path, so a checkout or -ModuleRoot copy relaunches the same build, not an installed one.
         $manifest = (Join-Path $script:ModuleRoot 'NSP.Toolkit.psd1').Replace("'", "''")
-        $relaunch = "Import-Module '$manifest'; Start-NSPToolkit"
+        $mode = if (Get-NSPDryRun) { '$true' } else { '$false' }
+        $relaunch = "Import-Module '$manifest'; Set-NSPDryRun -Enabled $mode -Confirm:`$false; Start-NSPToolkit"
         if ($Tool) { $relaunch += " -Tool '$($Tool.Replace("'", "''"))'" }
         if (Invoke-NSPElevated -Command $relaunch -NoExit) { return }
     }

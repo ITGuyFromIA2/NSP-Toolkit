@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10 (2026-11-06)
+
+- Pairing startup now collects source-anchor evidence inside the workflow instead of requiring
+  an exported JSON file. Local sync-server collection, a chosen remote sync server and saved
+  JSON are supported. Require UserPairing 0.1.2 and AD 0.1.13 for address preservation.
+- Offer explicit pairing review from the default DRY RUN menu: prerequisites and reads may
+  run, local decisions may be saved, and directory writes remain unavailable. Global DRY RUN
+  stays enabled. Preview/WhatIf still performs no installation, connection or collection.
+- Preserve DRY RUN across elevation and avoid forced elevation for named pairing startup.
+
 ## 0.1.9 (2026-11-05)
 
 - Add the UserPairing launcher and Start-NSPUserPairingSetup. Dependencies load from installed
