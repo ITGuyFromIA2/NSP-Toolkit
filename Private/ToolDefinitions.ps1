@@ -141,6 +141,16 @@ $script:NSPToolDefinitions = @(
         Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
     }
     [pscustomobject]@{
+        Name='AgentRemoval'; DisplayName='Remove NetSys+ agents (Automate, ScreenConnect)'
+        Description='Check, pick and remove the Automate (AutoTek) agent, ScreenConnect access agents and optionally ShadowProtect from this server.'
+        ModuleName='NSP.ClientScripts'; MinimumVersion='0.1.8'; EntryFunction='Start-NSPAgentRemoval'
+        ToolkitEntry=$true; ShimFunction=$null; RequiresAdmin=$true
+        Detect={ [bool](Get-Service -Name LTService -ErrorAction SilentlyContinue) -or [bool](Get-Service -Name 'ScreenConnect Client (*)' -ErrorAction SilentlyContinue) }
+        DetectHint='Automate agent or ScreenConnect installed'
+        SecretFields=@()
+        Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
+    }
+    [pscustomobject]@{
         Name='ScanBridge'; DisplayName='ScanBridge setup and diagnostics'
         Description='Inspect configuration health and dependencies, prepare the run account, and plan/register a task.'
         ModuleName='NSP.Toolkit'; MinimumVersion='0.1.3'; EntryFunction='Start-NSPScanBridgeSetup'

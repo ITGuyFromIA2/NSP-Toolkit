@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.12 (2026-11-18)
+
+- VCFImport: Toolkit DRY RUN now rehearses the whole process. It writes the CSV batches,
+  signs in, takes the mailbox inventory and backup, and shows a reconciliation; it only skips
+  the deletion. `-WhatIf` remains a preview that does nothing.
+- VCFImport purge: it asks for the mailbox first and drops any other delegated session (an admin,
+  say). It then signs in as the mailbox owner with a device code, for example with a Temporary
+  Access Pass. If the signed-in account is not that mailbox, it reads and deletes nothing. It
+  signs out afterwards.
+- New AgentRemoval entry (`Start-NSPToolkit -Tool AgentRemoval`, `Start-NSPAgentRemoval`). It
+  checks the server, asks item by item, then offers to switch from DRY RUN to a live run for
+  just those items. It needs NSP.ClientScripts 0.1.8, which is not yet on PSGallery.
+- Pushed without the test gate, at the owner's direction.
+
 ## 0.1.11 (2026-11-18)
 
 - Add the VCFImport launcher (`Start-NSPToolkit -Tool VCFImport`, alias `VCF`) and

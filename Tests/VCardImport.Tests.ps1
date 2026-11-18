@@ -17,8 +17,9 @@ Describe 'vCard import launcher' {
                 $null = $PSCmdlet.ShouldProcess($UserId, 'Delete every contact (synthetic)')
                 [pscustomobject]@{ Found = 3; Folders = 1; BackupPath = 'synthetic.json'; Deleted = $(if ($call.WhatIf) { 0 } else { 3 }); AlreadyGone = 0; Failed = @(); Remaining = 0 }
             }
-            function Connect-NSPGraph { param([string[]]$Scopes,[switch]$Connect) throw 'Live connection forbidden' }
+            function Connect-NSPGraph { param([string[]]$Scopes,[switch]$Connect,[switch]$UseDeviceCode) throw 'Live connection forbidden' }
             function Get-MgContext { throw 'Live context forbidden' }
+            function Disconnect-MgGraph { throw 'Live disconnect forbidden' }
             function Read-NSPMenu { param($Prompt,$Choices,$CancelLabel) throw 'Interactive menu forbidden' }
             function Read-NSPFilePath { param($Prompt,$Filter,[switch]$AllowBack) throw 'Interactive prompt forbidden' }
             function Read-NSPFolderPath { param($Prompt,$Default,[switch]$Create,[switch]$AllowBack) throw 'Interactive prompt forbidden' }
@@ -36,8 +37,12 @@ Describe 'vCard import launcher' {
             Mock Write-Host { }
             Mock Export-NSPOutlookContactCsv { [pscustomobject]@{OutputDirectory=$OutputDirectory;Cards=3;Exported=3;Skipped=0;Extras=0;PossibleDuplicates=0;Batches=@(1);Seconds=0.1} }
             Mock ConvertFrom-NSPVCard { 1..3 | ForEach-Object { [pscustomobject]@{Index=$_} } }
-            Mock Get-MgContext { [pscustomobject]@{AuthType='Delegated';Account='person@example.test';TenantId='00000000-0000-0000-0000-000000000000'} }
-            Mock Connect-NSPGraph { Get-MgContext }
+            # No session at first; the device-code sign-in signs in as the mailbox owner.
+            $script:session = $null
+            Mock Get-MgContext { $script:session }
+            Mock Connect-NSPGraph { $script:session = [pscustomobject]@{AuthType='Delegated';Account='person@example.test';TenantId='00000000-0000-0000-0000-000000000000'}; $script:session }
+            Mock Disconnect-MgGraph { $script:session = $null }
+            Mock Read-NSPNonEmpty { 'person@example.test' }
             $script:removeCalls = New-Object System.Collections.Generic.List[object]
             Mock Read-NSPConfirm { $true }
         }
@@ -59,25 +64,28 @@ Describe 'vCard import launcher' {
             Start-NSPToolkit -Tool AD
             Should -Invoke Invoke-NSPElevated -Times 1
         }
-        It 'DRY RUN writes nothing, installs nothing and signs in to nothing' {
+        It 'DRY RUN proves the process: writes the CSVs, signs in, inventories and backs up, deletes nothing' {
             Mock Get-NSPDryRun { $true }
-            Mock Get-Module { [pscustomobject]@{Name='NSP.LogParse';Version=[version]'0.1.1';Path='synthetic.psd1'} } -ParameterFilter { $ListAvailable }
-            $r = Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode DeletedItems
-            $r.Preview | Should -BeTrue
-            $r.Cards | Should -Be 3
-            Should -Invoke Export-NSPOutlookContactCsv -Times 0
-            Should -Invoke Import-NSPGalleryToolModule -Times 0
-            Should -Invoke Connect-NSPGraph -Times 0
-            $script:removeCalls.Count | Should -Be 0
-            Test-Path $script:out | Should -BeFalse
+            Mock Export-NSPOutlookContactCsv { [pscustomobject]@{OutputDirectory=$OutputDirectory;Cards=4;Exported=3;Skipped=1;Extras=0;PossibleDuplicates=0;Batches=@([pscustomobject]@{File='OutlookContacts_001.csv';Contacts=3});Seconds=0.1} }
+            $r = Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode Permanent
+            $r.DryRun | Should -BeTrue
+            Should -Invoke Export-NSPOutlookContactCsv -Times 1
+            Should -Invoke Connect-NSPGraph -Times 1
+            $script:removeCalls.Count | Should -Be 1
+            $script:removeCalls[0].WhatIf | Should -BeTrue
+            Should -Invoke Read-NSPConfirm -Times 0 -Because 'no delete is offered under DRY RUN'
+            $r.Purge | Should -BeNullOrEmpty
+            $r.Reconciliation.CardsAccounted | Should -BeTrue
+            $r.Reconciliation.BatchRows | Should -Be 3
+            $r.Reconciliation.MailboxContacts | Should -Be 3
+            $r.Reconciliation.Deleted | Should -Be 0
+            $r.Reconciliation.RemainingInMailbox | Should -Be 3
         }
-        It 'DRY RUN without LogParse installed only says it would install it' {
-            Mock Get-NSPDryRun { $true }
-            Mock Get-Module { } -ParameterFilter { $ListAvailable }
-            $r = Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out
-            $r.Cards | Should -BeNullOrEmpty
-            Should -Invoke ConvertFrom-NSPVCard -Times 0
-            Should -Invoke Import-NSPGalleryToolModule -Times 0
+        It 'flags a reconciliation mismatch' {
+            Mock Export-NSPOutlookContactCsv { [pscustomobject]@{OutputDirectory=$OutputDirectory;Cards=5;Exported=3;Skipped=1;Extras=0;PossibleDuplicates=0;Batches=@([pscustomobject]@{File='OutlookContacts_001.csv';Contacts=3});Seconds=0.1} }
+            $r = Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -LocalOnly
+            $r.Reconciliation.CardsAccounted | Should -BeFalse
+            Should -Invoke Write-Host -ParameterFilter { "$Object" -like '*MISMATCH*' }
         }
         It 'WhatIf is a preview too' {
             Mock Get-Module { } -ParameterFilter { $ListAvailable }
@@ -107,7 +115,9 @@ Describe 'vCard import launcher' {
         It 'Preview purge backs up and deletes nothing' {
             $r = Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode Preview
             Should -Invoke Import-NSPGalleryToolModule -Times 1 -ParameterFilter { $Name -eq 'NSP.M365.Graph' -and $MinimumVersion -eq '0.1.4' }
-            Should -Invoke Connect-NSPGraph -Times 1 -ParameterFilter { $Scopes -contains 'Contacts.ReadWrite' }
+            Should -Invoke Connect-NSPGraph -Times 1 -ParameterFilter { $Scopes -contains 'Contacts.ReadWrite' -and $UseDeviceCode }
+            Should -Invoke Read-NSPNonEmpty -Times 1
+            $script:session | Should -BeNullOrEmpty -Because 'the mailbox owner is signed out afterwards'
             $script:removeCalls.Count | Should -Be 1
             $script:removeCalls[0].WhatIf | Should -BeTrue
             $script:removeCalls[0].UserId | Should -Be 'person@example.test'
@@ -127,6 +137,19 @@ Describe 'vCard import launcher' {
             Mock Read-NSPConfirm { $false }
             Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode Permanent | Out-Null
             @($script:removeCalls | Where-Object { -not $_.WhatIf }).Count | Should -Be 0
+        }
+        It 'drops an admin session and signs in as the mailbox owner (Temporary Access Pass) before touching the mailbox' {
+            $script:session = [pscustomobject]@{AuthType='Delegated';Account='admin@example.test';TenantId='00000000-0000-0000-0000-000000000000'}
+            Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode Preview -UserId person@example.test | Out-Null
+            Should -Invoke Disconnect-MgGraph -Times 2 -Because 'once to drop the admin, once after the purge'
+            Should -Invoke Connect-NSPGraph -Times 1 -ParameterFilter { $UseDeviceCode }
+            $script:removeCalls[0].UserId | Should -Be 'person@example.test'
+        }
+        It 'refuses to read or delete when the sign-in is not the mailbox owner' {
+            Mock Connect-NSPGraph { $script:session = [pscustomobject]@{AuthType='Delegated';Account='admin@example.test';TenantId='00000000-0000-0000-0000-000000000000'}; $script:session }
+            { Start-NSPVCardImport -Path $script:vcf -OutputDirectory $script:out -PurgeMode DeletedItems -UserId person@example.test } | Should -Throw "*Signed in as 'admin@example.test', not 'person@example.test'*"
+            $script:removeCalls.Count | Should -Be 0
+            $script:session | Should -BeNullOrEmpty
         }
         It 'passes Permanent and keeps an existing app-only session' {
             Mock Get-MgContext { [pscustomobject]@{AuthType='AppOnly';AppName='synthetic';TenantId='00000000-0000-0000-0000-000000000000'} }

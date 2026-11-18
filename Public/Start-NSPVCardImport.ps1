@@ -62,9 +62,11 @@ function Start-NSPVCardImport {
     )
     if ($LocalOnly -and $PurgeMode -and $PurgeMode -ne 'None') { throw '-LocalOnly converts only; it cannot be combined with a purge.' }
 
+    # Toolkit DRY RUN rehearses the whole process (CSV batches, sign-in, mailbox inventory and
+    # backup, reconciliation) and only skips the deletion. -WhatIf is a preview that does nothing.
     $dryRun = Get-NSPDryRun
-    if ($dryRun -or $WhatIfPreference) {
-        $label = if ($dryRun) { 'DRY RUN' } else { 'WhatIf' }
+    if ($WhatIfPreference) {
+        $label = 'WhatIf'
         Write-Host "${label}: preview only - no installation, no files written, no sign-in, no mailbox change."
         if (-not $Path -and (Get-Command Read-NSPFilePath -ErrorAction SilentlyContinue)) {
             $Path = Read-NSPFilePath -Prompt 'vCard file to preview (.vcf)' -Filter 'vCard (*.vcf)|*.vcf|Parsed vCard (*.jsonl)|*.jsonl|All files (*.*)|*.*' -AllowBack
@@ -111,7 +113,7 @@ function Start-NSPVCardImport {
             $conversion.Cards, $conversion.Exported, @($conversion.Batches).Count, $conversion.Skipped, $conversion.PossibleDuplicates, $conversion.Extras, $conversion.Seconds)
     Write-Host "Review $(Join-Path $conversion.OutputDirectory 'work') before importing."
 
-    $result = [pscustomobject]@{ Conversion = $conversion; Purge = $null; PurgePreview = $null }
+    $result = [pscustomobject]@{ DryRun = [bool]$dryRun; Conversion = $conversion; Purge = $null; PurgePreview = $null; Reconciliation = $null }
 
     if ($LocalOnly) { $PurgeMode = 'None' }
     if (-not $PurgeMode) {
@@ -126,16 +128,28 @@ function Start-NSPVCardImport {
 
     if ($PurgeMode -ne 'None') {
         Import-NSPGalleryToolModule -Name NSP.M365.Graph -MinimumVersion 0.1.4
+        if (-not $UserId) { $UserId = Read-NSPNonEmpty -Prompt 'Mailbox to clear (UPN)' }
         $context = if (Get-Command Get-MgContext -ErrorAction SilentlyContinue) { Get-MgContext } else { $null }
+        $signedInHere = $false
         if (-not ($context -and "$($context.AuthType)" -eq 'AppOnly')) {
-            $context = Connect-NSPGraph -Scopes 'Contacts.ReadWrite' -Connect
+            # Delegated Contacts.ReadWrite reaches only the signed-in account's own mailbox, so the
+            # session must BE that mailbox. A session as anyone else (an admin, say) is dropped first.
+            if ($context -and "$($context.Account)" -ne $UserId) { Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null }
+            Write-Host ''
+            Write-Host "Sign in as $UserId in the browser (device code). An admin without that password: create a"
+            Write-Host 'Temporary Access Pass for the user in the Entra admin center (Users > the user > Authentication'
+            Write-Host 'methods > Add authentication method > Temporary Access Pass), use it at the sign-in, and use a'
+            Write-Host 'private browser window so your own account is not picked.'
+            $context = Connect-NSPGraph -Scopes 'Contacts.ReadWrite' -Connect -UseDeviceCode
             if (-not $context -and (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { $context = Get-MgContext }
+            $signedInHere = $true
+            if (-not $context -or "$($context.Account)" -ne $UserId) {
+                $who = if ($context) { $context.Account } else { 'nobody' }
+                Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+                throw "Signed in as '$who', not '$UserId'. Nothing was read or deleted."
+            }
         }
-        if (-not $UserId) {
-            if ($context -and $context.Account) { $UserId = [string]$context.Account }
-            else { $UserId = Read-NSPNonEmpty -Prompt 'Mailbox to clear (UPN)' }
-        }
-        $authLabel = if ($context -and "$($context.AuthType)" -eq 'AppOnly') { "app-only ($($context.AppName))" } else { "delegated as $($context.Account)" }
+        $authLabel = if ("$($context.AuthType)" -eq 'AppOnly') { "app-only ($($context.AppName))" } else { "signed in as $($context.Account)" }
         Write-Host "Mailbox: $UserId  Tenant: $($context.TenantId)  Session: $authLabel"
 
         $purge = @{ UserId = $UserId }
@@ -146,7 +160,9 @@ function Start-NSPVCardImport {
 
         if ($PurgeMode -in @('DeletedItems', 'Permanent') -and [int]$preview.Found -gt 0) {
             $where = if ($PurgeMode -eq 'Permanent') { 'PERMANENTLY delete' } else { 'move to Deleted Items' }
-            if (Read-NSPConfirm -Prompt "$where all $($preview.Found) contact(s) in $UserId? Phones syncing this mailbox lose them too") {
+            if ($dryRun) {
+                Write-Host "DRY RUN: would $where all $($preview.Found) contact(s) in $UserId. Nothing was deleted."
+            } elseif (Read-NSPConfirm -Prompt "$where all $($preview.Found) contact(s) in $UserId? Phones syncing this mailbox lose them too") {
                 if ($PurgeMode -eq 'Permanent') { $purge.Permanent = $true }
                 $result.Purge = Remove-NSPGraphMailboxContact @purge -Confirm:$false
                 Write-Host "Deleted $($result.Purge.Deleted), already gone $($result.Purge.AlreadyGone), failed $(@($result.Purge.Failed).Count), remaining $($result.Purge.Remaining)."
@@ -154,6 +170,35 @@ function Start-NSPVCardImport {
                 Write-Host 'Purge skipped. The backup above was still written.'
             }
         }
+        if ($signedInHere) {
+            Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "Signed out of $UserId. If you used a Temporary Access Pass, delete it from the user's authentication methods."
+        }
+    }
+
+    # Reconciliation: every card is either in a CSV batch or in work\02-skipped.csv; the mailbox
+    # side shows what was there, what the backup holds and what was (or would be) deleted.
+    $batchRows = [int](@($conversion.Batches) | Measure-Object -Property Contacts -Sum).Sum
+    $recon = [pscustomobject]@{
+        Cards              = [int]$conversion.Cards
+        Exported           = [int]$conversion.Exported
+        Skipped            = [int]$conversion.Skipped
+        Batches            = @($conversion.Batches).Count
+        BatchRows          = $batchRows
+        CardsAccounted     = ([int]$conversion.Exported + [int]$conversion.Skipped) -eq [int]$conversion.Cards
+        MailboxContacts    = $(if ($result.PurgePreview) { [int]$result.PurgePreview.Found } else { $null })
+        BackupPath         = $(if ($result.PurgePreview) { $result.PurgePreview.BackupPath } else { $null })
+        Deleted            = $(if ($result.Purge) { [int]$result.Purge.Deleted } else { 0 })
+        RemainingInMailbox = $(if ($result.Purge) { [int]$result.Purge.Remaining } elseif ($result.PurgePreview) { [int]$result.PurgePreview.Found } else { $null })
+    }
+    $result.Reconciliation = $recon
+    Write-Host ''
+    Write-Host $(if ($dryRun) { 'Reconciliation (DRY RUN - nothing deleted):' } else { 'Reconciliation:' })
+    Write-Host ("  vCard cards {0} = exported {1} + skipped {2}: {3}" -f $recon.Cards, $recon.Exported, $recon.Skipped, $(if ($recon.CardsAccounted) { 'OK' } else { 'MISMATCH - check work\02-skipped.csv' }))
+    if ($batchRows) { Write-Host ("  CSV rows {0} in {1} batch(es): {2}" -f $recon.BatchRows, $recon.Batches, $(if ($recon.BatchRows -eq $recon.Exported) { 'OK' } else { 'MISMATCH' })) }
+    if ($null -ne $recon.MailboxContacts) {
+        Write-Host ("  Mailbox contacts before {0}, backed up to {1}" -f $recon.MailboxContacts, $recon.BackupPath)
+        Write-Host ("  Deleted {0}, remaining {1}" -f $recon.Deleted, $recon.RemainingInMailbox)
     }
 
     Write-Host ''
