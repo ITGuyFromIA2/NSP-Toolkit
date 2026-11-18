@@ -11,7 +11,8 @@ function Start-NSPToolkit {
         Needs NSP.Console and NSP.Bootstrap; they are loaded on first use.
 
     .PARAMETER Tool
-        Start this tool directly (AD, NPS, PKI, FortiClient, MDE, LocalAccounts, ScanBridge, UserPairing).
+        Start this tool directly (AD, NPS, PKI, FortiClient, MDE, LocalAccounts, ScanBridge, UserPairing,
+        VCFImport - or VCF).
 
     .PARAMETER NoElevate
         Do not relaunch elevated.
@@ -31,7 +32,10 @@ function Start-NSPToolkit {
     Import-NSPToolkitModule -Name NSP.Bootstrap -MinimumVersion 0.1.3
     Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.2
 
-    if (-not $NoElevate -and $Tool -ne 'UserPairing') {
+    # A named tool that needs no admin rights (UserPairing, VCFImport) is not elevated.
+    $named = if ($Tool) { Get-NSPToolDefinition -Tool $Tool } else { $null }
+    if ($named) { $Tool = $named.Name }
+    if (-not $NoElevate -and -not ($named -and -not $named.RequiresAdmin)) {
         # By path, so a checkout or -ModuleRoot copy relaunches the same build, not an installed one.
         $manifest = (Join-Path $script:ModuleRoot 'NSP.Toolkit.psd1').Replace("'", "''")
         $mode = if (Get-NSPDryRun) { '$true' } else { '$false' }
@@ -41,7 +45,6 @@ function Start-NSPToolkit {
     }
 
     if ($Tool) {
-        $null = Get-NSPToolDefinition -Tool $Tool
         Invoke-NSPToolkitTool -Tool $Tool
         return
     }

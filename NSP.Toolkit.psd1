@@ -1,6 +1,6 @@
 @{
     RootModule        = 'NSP.Toolkit.psm1'
-    ModuleVersion     = '0.1.10'
+    ModuleVersion     = '0.1.11'
     GUID              = '768f2bfa-0068-4fa0-a2fd-ba6660e2f3ca'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
@@ -15,6 +15,7 @@
     FunctionsToExport = @(
         'Start-NSPToolkit'
         'Start-NSPUserPairingSetup'
+        'Start-NSPVCardImport'
         'Start-NSPScanBridgeSetup'
         'Get-NSPToolkitTool'
         'Get-NSPToolWorkPath'

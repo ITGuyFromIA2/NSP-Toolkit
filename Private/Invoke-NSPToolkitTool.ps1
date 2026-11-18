@@ -3,6 +3,7 @@ function Invoke-NSPToolkitTool {
     param([Parameter(Mandatory)][string]$Tool)
 
     $def = Get-NSPToolDefinition -Tool $Tool
+    $Tool = $def.Name
     # This Toolkit adapter owns its Gallery dependency loading and DRY RUN checks.
     if ($def.PSObject.Properties['ToolkitEntry'] -and $def.ToolkitEntry) {
         if ($Tool -eq 'UserPairing' -and (Get-NSPDryRun)) {

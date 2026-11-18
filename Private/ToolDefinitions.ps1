@@ -132,6 +132,15 @@ $script:NSPToolDefinitions = @(
         Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
     }
     [pscustomobject]@{
+        Name='VCFImport'; Aliases=@('VCF'); DisplayName='vCard to Outlook contact import'
+        Description='Convert an Apple Contacts .vcf to Outlook CSV batches; optionally back up and clear the mailbox contacts first.'
+        ModuleName='NSP.LogParse'; MinimumVersion='0.1.1'; EntryFunction='Start-NSPVCardImport'
+        ToolkitEntry=$true; ShimFunction=$null; RequiresAdmin=$false
+        Detect={ $false }; DetectHint='contact re-import'
+        SecretFields=@()
+        Legacy=[pscustomobject]@{StagingFolder=$null;ExtractFolder=$null;AnswersFile=$null;ShimNames=@();ShimAnswersVar=$null;FixedPaths=@()}
+    }
+    [pscustomobject]@{
         Name='ScanBridge'; DisplayName='ScanBridge setup and diagnostics'
         Description='Inspect configuration health and dependencies, prepare the run account, and plan/register a task.'
         ModuleName='NSP.Toolkit'; MinimumVersion='0.1.3'; EntryFunction='Start-NSPScanBridgeSetup'
@@ -144,7 +153,8 @@ $script:NSPToolDefinitions = @(
 
 function Get-NSPToolDefinition {
     param([Parameter(Mandatory)][string]$Tool)
-    $def = $script:NSPToolDefinitions | Where-Object { $_.Name -eq $Tool }
+    # A short alias (VCF for VCFImport) resolves to the same definition; callers use $def.Name.
+    $def = $script:NSPToolDefinitions | Where-Object { $_.Name -eq $Tool -or ($_.PSObject.Properties['Aliases'] -and @($_.Aliases) -contains $Tool) } | Select-Object -First 1
     if (-not $def) { throw "Unknown tool '$Tool'. Known tools: $(($script:NSPToolDefinitions | ForEach-Object Name) -join ', ')." }
     return $def
 }

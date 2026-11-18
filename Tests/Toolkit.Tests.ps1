@@ -270,7 +270,7 @@ Describe 'Clear-NSPToolClientData' {
 Describe 'Launcher' {
     It 'lists the operator tools including pairing and ScanBridge setup' {
         $t = @(Get-NSPToolkitTool)
-        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient,MDE,LocalAccounts,UserPairing,ScanBridge'
+        ($t.Name -join ',') | Should -Be 'AD,NPS,PKI,FortiClient,MDE,LocalAccounts,UserPairing,VCFImport,ScanBridge'
         ($t | Where-Object Name -eq NPS).SecretFields | Should -Contain 'RADIUSSecret'
     }
 

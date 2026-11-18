@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.11 (2026-11-18)
+
+- Add the VCFImport launcher (`Start-NSPToolkit -Tool VCFImport`, alias `VCF`) and
+  Start-NSPVCardImport. It converts an Apple Contacts .vcf to Outlook CSV batches with
+  NSP.LogParse 0.1.1. As an option, it backs up and clears the mailbox's contacts first with
+  NSP.M365.Graph 0.1.4: a -WhatIf inventory and backup always run before a confirmed delete.
+  Dependencies come from installed modules or PSGallery only.
+- DRY RUN and WhatIf for VCFImport are a preview only. Nothing is installed, no file is
+  written, there is no sign-in and the mailbox is not changed. An installed LogParse parses
+  the file in memory to report the card and batch counts.
+- A named tool with `RequiresAdmin = $false` (UserPairing, VCFImport) is no longer forced to
+  elevate. `-Tool` accepts tool aliases.
+
 ## 0.1.10 (2026-11-06)
 
 - Pairing startup now collects source-anchor evidence inside the workflow instead of requiring

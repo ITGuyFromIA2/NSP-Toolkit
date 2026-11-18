@@ -169,6 +169,31 @@ the worker lock. The task never receives the event's filename. A scan that takes
 than the delay is picked up by the next pass, never early, because readiness still needs the
 route age and an exclusive open.
 
+## vCard to Outlook contact import
+
+```powershell
+Start-NSPToolkit -Tool VCFImport      # or -Tool VCF
+Start-NSPVCardImport -Path .\Contacts.vcf -OutputDirectory .\OutlookImport -LocalOnly
+```
+
+Converts an Apple Contacts export into `OutlookContacts_NNN.csv` batches, with an
+`ImportManifest.csv` and a `work\` folder that records what moved to Notes, what was skipped and
+the possible duplicates. NSP.LogParse 0.1.1+ does the conversion. As an option it then clears
+the mailbox first, using NSP.M365.Graph 0.1.4+:
+
+1. Sign in with delegated `Contacts.ReadWrite`, which covers your own mailbox. An app-only
+   session that is already connected is used as it is.
+2. Inventory and a verified JSON backup (`Remove-NSPGraphMailboxContact -WhatIf`).
+3. After a confirmation, every contact moves to Deleted Items, or is deleted permanently.
+
+Phones that sync over ActiveSync lose the contacts too. Import the batches in Outlook in
+manifest order. The tool needs no elevation. Keep the output folder outside Git, because it
+holds the contacts.
+
+**DRY RUN and `-WhatIf` are a preview only.** Nothing is installed, no file is written, there
+is no sign-in and the mailbox is not changed. If LogParse is already installed, the file is
+parsed in memory to report the card and batch counts.
+
 ## Entra / AD user pairing
 
 ```powershell
