@@ -129,7 +129,7 @@ function Start-NSPVCardImport {
     if ($PurgeMode -ne 'None') {
         Import-NSPGalleryToolModule -Name NSP.M365.Graph -MinimumVersion 0.1.4
         if (-not $UserId) { $UserId = Read-NSPNonEmpty -Prompt 'Mailbox to clear (UPN)' }
-        $context = if (Get-Command Get-MgContext -ErrorAction SilentlyContinue) { Get-MgContext } else { $null }
+        $context = Get-NSPToolkitGraphContext
         $signedInHere = $false
         if (-not ($context -and "$($context.AuthType)" -eq 'AppOnly')) {
             # Delegated Contacts.ReadWrite reaches only the signed-in account's own mailbox, so the
@@ -141,7 +141,7 @@ function Start-NSPVCardImport {
             Write-Host 'methods > Add authentication method > Temporary Access Pass), use it at the sign-in, and use a'
             Write-Host 'private browser window so your own account is not picked.'
             $context = Connect-NSPGraph -Scopes 'Contacts.ReadWrite' -Connect -UseDeviceCode
-            if (-not $context -and (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { $context = Get-MgContext }
+            if (-not $context) { $context = Get-NSPToolkitGraphContext }
             $signedInHere = $true
             if (-not $context -or "$($context.Account)" -ne $UserId) {
                 $who = if ($context) { $context.Account } else { 'nobody' }
@@ -178,7 +178,11 @@ function Start-NSPVCardImport {
 
     # Reconciliation: every card is either in a CSV batch or in work\02-skipped.csv; the mailbox
     # side shows what was there, what the backup holds and what was (or would be) deleted.
-    $batchRows = [int](@($conversion.Batches) | Measure-Object -Property Contacts -Sum).Sum
+    # Summed by hand: in 5.1, Measure-Object -Property throws when a row lacks the property.
+    $batchRows = 0
+    foreach ($batch in @($conversion.Batches)) {
+        if ($batch -and $batch.PSObject.Properties['Contacts']) { $batchRows += [int]$batch.Contacts }
+    }
     $recon = [pscustomobject]@{
         Cards              = [int]$conversion.Cards
         Exported           = [int]$conversion.Exported

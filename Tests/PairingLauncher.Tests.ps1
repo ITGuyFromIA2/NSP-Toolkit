@@ -174,5 +174,34 @@ Describe 'Gallery module loading' {
             Should -Invoke Remove-Module -Times 1 -ParameterFilter { $Name -eq 'NSP.M365.UserPairing' }
             Should -Invoke Import-Module -Times 1 -ParameterFilter { $Name -eq 'new.psd1' }
         }
+        It 'keeps an installed module that is already loaded instead of reloading it (Graph SessionNotInitialized)' {
+            $root = @($env:PSModulePath -split [IO.Path]::PathSeparator | Where-Object { $_ })[0]
+            $base = Join-Path $root 'NSP.M365.Graph\0.1.4'
+            # Loaded Path is the .psm1, available Path the .psd1 - the old comparison never matched.
+            Mock Get-Module { if ($ListAvailable) { [pscustomobject]@{Version=[version]'0.1.4';Path=(Join-Path $base 'NSP.M365.Graph.psd1');ModuleBase=$base} } else { [pscustomobject]@{Version=[version]'0.1.4';Path=(Join-Path $base 'NSP.M365.Graph.psm1');ModuleBase=$base} } }
+            Mock Remove-Module { throw 'must not unload' }
+            Import-NSPGalleryToolModule -Name NSP.M365.Graph -MinimumVersion 0.1.4
+            Should -Invoke Remove-Module -Times 0
+            Should -Invoke Import-Module -Times 0
+            Should -Invoke Install-NSPModule -Times 0
+        }
+        It 'still replaces a module loaded from outside the module paths (a checkout)' {
+            $root = @($env:PSModulePath -split [IO.Path]::PathSeparator | Where-Object { $_ })[0]
+            $base = Join-Path $root 'NSP.M365.Graph\0.1.4'
+            Mock Get-Module { if ($ListAvailable) { [pscustomobject]@{Version=[version]'0.1.4';Path=(Join-Path $base 'NSP.M365.Graph.psd1');ModuleBase=$base} } else { [pscustomobject]@{Version=[version]'0.1.4';Path='C:\checkout\NSP-M365-Graph\NSP.M365.Graph.psm1';ModuleBase='C:\checkout\NSP-M365-Graph'} } }
+            Mock Remove-Module { }
+            Import-NSPGalleryToolModule -Name NSP.M365.Graph -MinimumVersion 0.1.4
+            Should -Invoke Remove-Module -Times 1
+            Should -Invoke Import-Module -Times 1 -ParameterFilter { $Name -like '*NSP.M365.Graph.psd1' }
+        }
+    }
+}
+
+Describe 'Get-NSPToolkitGraphContext' {
+    InModuleScope NSP.Toolkit {
+        It 'treats a throwing Get-MgContext (SessionNotInitialized) as no context' {
+            function Get-MgContext { throw 'SessionNotInitialized' }
+            Get-NSPToolkitGraphContext | Should -BeNullOrEmpty
+        }
     }
 }

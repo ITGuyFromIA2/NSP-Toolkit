@@ -12,7 +12,13 @@
 - New AgentRemoval entry (`Start-NSPToolkit -Tool AgentRemoval`, `Start-NSPAgentRemoval`). It
   checks the server, asks item by item, then offers to switch from DRY RUN to a live run for
   just those items. It needs NSP.ClientScripts 0.1.8, which is not yet on PSGallery.
-- Pushed without the test gate, at the owner's direction.
+- Fix: a second Gallery-backed tool run in the same window failed at Graph sign-in with
+  `SessionNotInitialized`. `Import-NSPGalleryToolModule` compared a loaded module's `.psm1` path
+  with the installed `.psd1` path, so every later call unloaded and reloaded NSP.M365.Graph, which
+  breaks the Graph SDK's session in a live process. An installed module that is already loaded at
+  the required version is now kept. `Get-MgContext` failures are treated as "no context".
+- Fix: the VCFImport reconciliation no longer fails in Windows PowerShell 5.1 when a batch row
+  has no `Contacts` column.
 
 ## 0.1.11 (2026-11-18)
 
